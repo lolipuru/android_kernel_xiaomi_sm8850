@@ -13,3 +13,4 @@ obj-$(CONFIG_BOOTMARKER_PROXY) += bootmarker_proxy.o
 obj-$(CONFIG_QTI_FASTRPC) += frpc-adsprpc.o
 frpc-adsprpc-objs += fastrpc.o
 
+obj-$(CONFIG_MI_HARDWARE_ID) += hwid/

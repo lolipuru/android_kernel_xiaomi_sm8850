@@ -153,6 +153,7 @@ filegroup(
             "include/**/*.h",
             "arch/arm/include/**/*.h",
             "include/uapi/**",
+            "drivers/misc/hwid/**/*.h",
         ],
         allow_empty = True,
     ),
@@ -173,6 +174,7 @@ ddk_headers(
         "arch/arm64/include/uapi",
         "include",
         "include/uapi",
+        "drivers/misc/hwid",
     ],
     visibility = ["//visibility:public"],
 )

@@ -11,6 +11,11 @@
 #include <linux/types.h>
 
 #define HARDWARE_PROJECT_UNKNOWN    0
+#define HARDWARE_PROJECT_P1         1 /* popsicle */
+#define HARDWARE_PROJECT_P2         2 /* pudding */
+#define HARDWARE_PROJECT_P3         3 /* pandora */
+#define HARDWARE_PROJECT_P11U       4 /* myron */
+#define HARDWARE_PROJECT_NEZHA      5 /* nezha */
 
 typedef enum {
 	CountryCN = 0x00,

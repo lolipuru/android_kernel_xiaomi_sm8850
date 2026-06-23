@@ -7,6 +7,10 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_sysfs.c",
         ],
+        hdrs = [
+            "drivers/power/supply/mca/include/mca/common/mca_sysfs.h",
+        ],
+        includes = ["drivers/power/supply/mca/include"],
     )
 
     registry.register(
@@ -17,6 +21,10 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_event.c",
         ],
+        hdrs = [
+            "drivers/power/supply/mca/include/mca/common/mca_event.h",
+        ],
+        includes = ["drivers/power/supply/mca/include"],
         deps = [
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_sysfs",
@@ -31,6 +39,10 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_log.c",
         ],
+        hdrs = [
+            "drivers/power/supply/mca/include/mca/common/mca_log.h",
+        ],
+        includes = ["drivers/power/supply/mca/include"],
         deps = [
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_sysfs",
@@ -46,6 +58,10 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_parse_dts.c",
         ],
+        hdrs = [
+            "drivers/power/supply/mca/include/mca/common/mca_parse_dts.h",
+        ],
+        includes = ["drivers/power/supply/mca/include"],
         deps = [
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_log",
@@ -60,6 +76,7 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_workqueue.c",
         ],
+        includes = ["drivers/power/supply/mca/include"],
         deps = [
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_log",
@@ -74,6 +91,11 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_voter.c",
         ],
+        hdrs = [
+            "drivers/power/supply/mca/include/mca/common/mca_hwid.h",
+            "drivers/power/supply/mca/include/mca/common/mca_voter.h",
+        ],
+        includes = ["drivers/power/supply/mca/include"],
         deps = [
             # do not sort
             "drivers/power/supply/mca/mca_common/mca_log",

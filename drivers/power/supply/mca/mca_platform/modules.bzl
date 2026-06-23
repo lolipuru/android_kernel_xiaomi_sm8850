@@ -7,5 +7,8 @@ def register_modules(registry):
             # do not sort
             "drivers/power/supply/mca/mca_platform/mca_platform_buckchg_class.c",
         ],
+        hdrs = [
+            "drivers/power/supply/mca/include/mca/platform/platform_buckchg_class.h",
+        ],
         includes = ["drivers/power/supply/mca/include"],
     )

@@ -10,3 +10,4 @@ qti-battery-charger-objs += qti_battery_charger.o qti_charger_boost_lib.o qti_ty
 
 obj-$(CONFIG_BATTERY_MAX1720X) += max1720x_battery.o
 
+obj-$(CONFIG_XM_POWER_SUPPLY)	+= mca/

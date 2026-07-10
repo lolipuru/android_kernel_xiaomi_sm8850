@@ -51,4 +51,6 @@ config QTI_CHARGER_NFC_VREG
 
 source "$(KCONFIG_EXT_PREFIX)drivers/power/supply/qcom/Kconfig"
 
+source "drivers/power/supply/mca/Kconfig"
+
 endif # POWER_SUPPLY

@@ -65,6 +65,7 @@ load(":drivers/usb/modules.bzl", register_usb = "register_modules")
 load(":drivers/video/modules.bzl", register_video = "register_modules")
 load(":drivers/virt/modules.bzl", register_virt = "register_modules")
 load(":drivers/virtio/modules.bzl", register_virtio = "register_modules")
+load(":drivers/xiaomi/modules.bzl", register_mi_drivers = "register_modules")
 
 def register_modules(registry):
     register_base_regmap(registry)
@@ -134,3 +135,4 @@ def register_modules(registry):
     register_video(registry)
     register_virt(registry)
     register_virtio(registry)
+    register_mi_drivers(registry)

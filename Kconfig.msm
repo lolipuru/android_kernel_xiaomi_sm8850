@@ -154,4 +154,6 @@ source "$(KCONFIG_EXT_PREFIX)Kconfig.qtvm"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/block/zram/Kconfig"
 
+source "$(KCONFIG_EXT_PREFIX)drivers/input/fingerprint/mi_fp/Kconfig"
+
 endmenu

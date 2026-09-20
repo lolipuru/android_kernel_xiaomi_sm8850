@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
- */
+/* Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.*/
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -17,6 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/proc_fs.h>
+#include <linux/sched/clock.h>
 #include <linux/skbuff.h>
 #include <linux/suspend.h>
 #include <linux/types.h>
@@ -26,8 +25,6 @@
 #include <linux/gunyah/gh_rm_drv.h>
 #include <linux/gunyah/gh_vm.h>
 #include <linux/firmware/qcom/qcom_scm.h>
-#include <linux/devcoredump.h>
-#include <linux/gunyah/gh_vm.h>
 #include <soc/qcom/secure_buffer.h>
 
 #include "dmesg_dumper_private.h"
@@ -224,61 +221,6 @@ static int qcom_ddump_unshare_mem(struct qcom_dmesg_dumper *qdd, gh_vmid_t self,
 	return ret;
 }
 
-
-#ifdef CONFIG_QCOM_VM_CRASH_DMESG_DUMP
-static int qcom_ddump_handle_vm_exited(struct notifier_block *nb, unsigned long cmd,
-		void *data)
-{
-	gh_vmid_t peer_vmid;
-	void *dump_data;
-	gh_vmid_t *notify_vmid = data;
-	struct qcom_dmesg_dumper *qdd = container_of(nb, struct qcom_dmesg_dumper, vm_crash_nb);
-
-	if (cmd != GUNYAH_QTVM_EXITED)
-		return NOTIFY_DONE;
-
-	if (!qdd->base)
-		return NOTIFY_DONE;
-
-	if (ghd_rm_get_vmid(qdd->peer_name, &peer_vmid)) {
-		dev_err(qdd->dev, "Failed to get VMID from VM name\n");
-		return NOTIFY_DONE;
-	}
-
-	if (peer_vmid != *notify_vmid)
-		return NOTIFY_DONE;
-
-	dump_data = vmalloc(qdd->size);
-	if (!dump_data)
-		return NOTIFY_DONE;
-
-	memcpy(dump_data, qdd->base, qdd->size);
-	dev_coredumpv(qdd->dev, dump_data, qdd->size, GFP_KERNEL);
-
-	return NOTIFY_DONE;
-}
-
-static int qcom_ddump_register_vm_notifier(struct qcom_dmesg_dumper *qdd)
-{
-	qdd->vm_crash_nb.notifier_call = qcom_ddump_handle_vm_exited;
-	qdd->vm_crash_nb.priority = INT_MAX;
-	return gh_register_vm_notifier(&qdd->vm_crash_nb);
-}
-
-static void qcom_ddump_unregister_vm_notifier(struct qcom_dmesg_dumper *qdd)
-{
-	gh_unregister_vm_notifier(&qdd->vm_crash_nb);
-}
-#else
-static int qcom_ddump_register_vm_notifier(struct qcom_dmesg_dumper *qdd)
-{
-	return 0;
-}
-
-static void qcom_ddump_unregister_vm_notifier(struct qcom_dmesg_dumper *qdd)
-{}
-#endif
-
 static int qcom_ddump_vm_cb(struct notifier_block *nb, unsigned long cmd,
 			     void *data)
 {
@@ -388,8 +330,10 @@ static void qcom_ddump_gh_cb(int irq, void *data)
 			dev_err(qdd->dev, "dump alive log error %d\n", ret);
 
 		qcom_ddump_gh_kick(qdd);
-		if (hdr->svm_dump_len == 0)
+		if (hdr->svm_dump_len == 0) {
+			kmsg_dump_rewind(&qdd->iter);
 			pm_wakeup_ws_event(qdd->wakeup_source, 0, true);
+		}
 	}
 }
 
@@ -579,6 +523,10 @@ static ssize_t qcom_ddump_vmkmsg_read(struct file *file, char __user *buf,
 	struct qcom_dmesg_dumper *qdd = pde_data(file_inode(file));
 	struct ddump_shm_hdr *hdr;
 	int ret;
+	static bool fresh_read = true;
+	static bool last_dump = true;
+	char dump_status[512] = {0};
+	int len = 0;
 
 	if (!qdd->is_ready)
 		return -ENODEV;
@@ -587,15 +535,46 @@ static ssize_t qcom_ddump_vmkmsg_read(struct file *file, char __user *buf,
 		dev_err(qdd->dev, "user buffer size should greater than %d\n", LOG_LINE_MAX);
 		return -EINVAL;
 	}
-
+	/* fresh_read::false means last read has some wrong, so return directly */
+	if (!fresh_read) {
+		fresh_read = true;
+		last_dump = true;
+		return 0;
+	}
 	hdr = qdd->base;
+	if (last_dump) {
+		last_dump = false;
+		len += sprintf(dump_status + len, "[last read vmkmsg info]\n");
+		len += sprintf(dump_status + len, "\tpvm timing: %llu.%llu s\n",
+				hdr->pvm_read_timing/1000000000ULL, hdr->pvm_read_timing%1000000000ULL);
+		len += sprintf(dump_status + len, "\tread len: %llu, svm_suspend: %d\n", hdr->pvm_read_len, hdr->pvm_read_suspend);
+		len += sprintf(dump_status + len, "[svm info]\n");
+		len += sprintf(dump_status + len, "\tsvm suspend timing: %llu.%llu s\n\n",
+				hdr->svm_suspend_timing/1000000000ULL, hdr->svm_suspend_timing%1000000000ULL);
+		(void)copy_to_user(buf, dump_status, len);
+		hdr->pvm_read_timing = sched_clock();
+		hdr->pvm_read_len = 0;
+		hdr->pvm_read_suspend = hdr->svm_is_suspend;
+		return len;
+	}
+
 	/**
 	 * If SVM is in suspend mode and the log size more than 1k byte,
 	 * we think SVM has log need to be read. Otherwise, we think the
 	 * log is only suspend log that we need skip the unnecessary log.
 	 */
-	if (hdr->svm_is_suspend && hdr->svm_dump_len < 1024)
+	if (hdr->svm_is_suspend && hdr->svm_dump_len < 1024) {
+		if (fresh_read) {
+			fresh_read = false;
+			len += sprintf(dump_status + len, "\n\n[current read vmkmsg info]\n");
+			len += sprintf(dump_status + len, "[skip read as svm is in suspend and log size less than 1k]\n");
+			(void)copy_to_user(buf, dump_status, len);
+			hdr->pvm_read_suspend = true;
+			hdr->pvm_read_len = hdr->svm_dump_len;
+			return len;
+		}
 		return 0;
+	}
 
 	if (hdr->log_is_encrypted)
 		hdr->user_buf_len = count;
@@ -609,11 +588,26 @@ static ssize_t qcom_ddump_vmkmsg_read(struct file *file, char __user *buf,
 		hdr->user_buf_len = count / 2;
 
 	ret = qcom_ddump_gh_kick(qdd);
-	if (ret)
+	if (ret) {
+		if (fresh_read) {
+			fresh_read = false;
+			len += sprintf(dump_status + len, "\n\n[current read vmkmsg info]\n");
+			len += sprintf(dump_status + len, " [gh dbl kick failed with %d, svm might abnormal\n", ret);
+			(void)copy_to_user(buf, dump_status, len);
+			return len;
+		}
 		return ret;
+	}
 
 	ret = wait_for_completion_timeout(&qdd->ddump_completion, DDUMP_WAIT_WAKEIRQ_TIMEOUT);
 	if (!ret) {
+		if (fresh_read) {
+			fresh_read = false;
+			len += sprintf(dump_status + len, "\n\n[current read vmkmsg info]\n");
+			len += sprintf(dump_status + len, " [gh dbl wait timeout with %d, svm might abnormal\n", ret);
+			(void)copy_to_user(buf, dump_status, len);
+			return len;
+		}
 		dev_err(qdd->dev, "wait for completion timeout\n");
 		return -ETIMEDOUT;
 	}
@@ -628,12 +622,29 @@ static ssize_t qcom_ddump_vmkmsg_read(struct file *file, char __user *buf,
 		return vmkmsg_with_pvm_ktime_prefix(qdd, buf, count);
 	}
 
+	hdr->pvm_read_len += hdr->svm_dump_len;
 	if (hdr->svm_dump_len &&
 		copy_to_user(buf, &hdr->data, hdr->svm_dump_len)) {
 		dev_err(qdd->dev, "copy_to_user fail\n");
+		if (fresh_read) {
+			fresh_read = false;
+			len += sprintf(dump_status + len, "\n\n[current read vmkmsg info]\n");
+			len += sprintf(dump_status + len, " [copy_to_user failed]\n");
+			(void)copy_to_user(buf, dump_status, len);
+			return len;
+		}
 		return -EFAULT;
 	}
-
+	if (hdr->svm_dump_len == 0) {
+		/* read empty, update the read info */
+		if (fresh_read) {
+			fresh_read = false;
+			len += sprintf(dump_status + len, "\n\n[current vmkmsg info]\n");
+			len += sprintf(dump_status + len, " svm_dump_len: %llu\n", hdr->pvm_read_len);
+			(void)copy_to_user(buf, dump_status, len);
+			return len;
+		}
+	}
 	return hdr->svm_dump_len;
 }
 
@@ -682,7 +693,7 @@ static int qcom_ddump_alive_log_probe(struct qcom_dmesg_dumper *qdd)
 			return -ENOMEM;
 
 		init_completion(&qdd->ddump_completion);
-		dent = proc_create_data(DDUMP_PROFS_NAME, 0400, NULL, &ddump_proc_ops, qdd);
+		dent = proc_create_data(DDUMP_PROFS_NAME, 0444, NULL, &ddump_proc_ops, qdd);
 		if (!dent) {
 			dev_err(dev, "proc_create_data fail\n");
 			return -ENOMEM;
@@ -692,6 +703,10 @@ static int qcom_ddump_alive_log_probe(struct qcom_dmesg_dumper *qdd)
 		hdr = qdd->base;
 		hdr->svm_is_suspend = false;
 		hdr->log_is_encrypted = false;
+		hdr->svm_suspend_timing = 0;
+		hdr->pvm_read_timing = 0;
+		hdr->pvm_read_len = 0;
+		hdr->pvm_read_suspend = false;
 
 		gh_get_virt_time_offset(&cur_time_ofs);
 		memset(hdr->time_ofs, 0,
@@ -785,9 +800,6 @@ static int qcom_ddump_probe(struct platform_device *pdev)
 		qdd->vm_nb.notifier_call = qcom_ddump_vm_cb;
 		qdd->vm_nb.priority = INT_MAX;
 		gh_register_vm_notifier(&qdd->vm_nb);
-		ret = qcom_ddump_register_vm_notifier(qdd);
-		if (ret)
-			dev_info(qdd->dev, "VM Dmesg dump upon VM crash will not be avaialble\n");
 	} else {
 		res = devm_request_mem_region(dev, qdd->res.start, qdd->size, dev_name(dev));
 		if (!res) {
@@ -843,7 +855,6 @@ static void qcom_ddump_remove(struct platform_device *pdev)
 
 	if (qdd->primary_vm) {
 		gh_unregister_vm_notifier(&qdd->vm_nb);
-		qcom_ddump_unregister_vm_notifier(qdd);
 		ret = ghd_rm_get_vmid(qdd->peer_name, &peer_vmid);
 		if (ret)
 			return;
@@ -877,12 +888,15 @@ static int qcom_ddump_suspend(struct device *pdev)
 	int ret;
 
 	hdr->svm_is_suspend = true;
+	hdr->svm_suspend_timing = sched_clock();
+	mb();
 	seq_backup = qdd->iter.cur_seq;
 	ret = qcom_ddump_alive_log_to_shm(qdd, qdd->size);
 	if (ret)
 		dev_err(qdd->dev, "dump alive log error %d\n", ret);
 
 	qdd->iter.cur_seq = seq_backup;
+	mb();
 	return 0;
 }
 

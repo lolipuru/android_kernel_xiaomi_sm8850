@@ -17,6 +17,8 @@ def register_modules(registry):
             # do not sort
             "drivers/input/misc/qcom-hv-haptics.c",
             "drivers/input/misc/qcom-hv-haptics-debugfs.h",
+            "drivers/input/misc/xm-haptic.h",
+            "drivers/misc/hwid/hwid.h",
         ],
         deps = [
             # do not sort
@@ -42,5 +44,7 @@ def register_modules(registry):
             "drivers/virt/gunyah/gh_msgq",
             "drivers/virt/gunyah/gh_dbl",
             "arch/arm64/gunyah/gh_arm_drv",
+            "drivers/misc/miev",
+            "drivers/misc/hwid",
         ],
     )

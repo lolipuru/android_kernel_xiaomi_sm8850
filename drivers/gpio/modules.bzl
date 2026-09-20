@@ -17,3 +17,16 @@ def register_modules(registry):
             "drivers/gpio/gpio-pca953x.c",
         ],
     )
+    registry.register(
+        name = "drivers/gpio/gpio-mi-t1",
+        out = "gpio-mi-t1.ko",
+        config = "CONFIG_MI_T1_CHIP",
+        srcs = [
+            # do not sort
+            "drivers/gpio/gpio-mi-t1.c",
+        ],
+        deps = [
+            # do not sort
+            "drivers/remoteproc/rproc_qcom_common",
+        ],
+    )

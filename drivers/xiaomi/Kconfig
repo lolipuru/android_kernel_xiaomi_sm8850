@@ -2,3 +2,9 @@
 
 source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/bootmonitor/Kconfig"
 source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/boottime/Kconfig"
+
+config MI_T1_CHIP
+	tristate "Xiaomi T1 Surge chip GPIO control"
+	default n
+	help
+	  Driver for Xiaomi T1 Surge chip GPIO control.

@@ -1,0 +1,5 @@
+config MI_T1_CHIP
+	tristate "Xiaomi T1 Surge chip GPIO control"
+	default n
+	help
+	  Driver for Xiaomi T1 Surge chip GPIO control.

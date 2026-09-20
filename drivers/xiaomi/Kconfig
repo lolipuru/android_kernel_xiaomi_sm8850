@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/bootmonitor/Kconfig"
 source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/boottime/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/bootmonitor/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/mtdoops/Kconfig"
 
 config MI_T1_CHIP
 	tristate "Xiaomi T1 Surge chip GPIO control"

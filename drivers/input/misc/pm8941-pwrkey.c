@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2010-2011, 2020-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2014, Sony Mobile Communications Inc.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -18,6 +18,10 @@
 #include <linux/platform_device.h>
 #include <linux/reboot.h>
 #include <linux/regmap.h>
+#include <linux/nmi.h>
+#include <linux/sched/debug.h>
+#include <linux/sched.h>
+#include <linux/printk.h>
 #include <linux/suspend.h>
 
 #define PON_REV2			0x01
@@ -56,29 +60,8 @@
 #define  PON_DBC_SHIFT_GEN1		6
 #define  PON_DBC_SHIFT_GEN2		14
 
-#define  BTN_EN_CTL			0x45
-#define  BTN_EN_DEB			BIT(7)
-#define  BTN_DEB_IN_POL			BIT(3)
-#define  BTN_DEB_OUT_SEL_MASK		GENMASK(2, 1)
-#define  BTN_DEB_OUT_SEL_DEBOUNCED	(0x2 << 1)
-#define  BTN_EN_TMR_SEL			BIT(0)
-
-#define  BTN_GPIO_MUX_SEL		0x46
-#define  BTN_MUX_SEL_MASK		GENMASK(2, 0)
-#define  BTN_MUX_SEL_BTN		0x0
-
-#define  BTN_POLARITY			0x47
-#define  BTN_INV_DEB_IN			BIT(7)
-
-#define  BTN_DEBOUNCER_CFG1		0x48
-#define  BTN_DEBOUNCER_CFG2		0x49
-#define  BTN_DEB_CNT_LSB_MASK		0xFF
-#define  BTN_DEB_CNT_MSB_MASK		0x03
-#define  BTN_DEB_CLK_US			31
-
-#define  BTN_RT_STS_BIT			BIT(0)
-
-#define  PON_SUBTYPE_BTN		0x72
+#define PMIC_PWRKEY_BARK_TRIGGER	1
+#define PMIC_PWRKEY_TRIGGER		2
 
 struct pm8941_data {
 	unsigned int	pull_up_bit;
@@ -111,6 +94,9 @@ struct pm8941_pwrkey {
 	const struct pm8941_data *data;
 };
 
+
+RAW_NOTIFIER_HEAD(pwrkey_irq_notifier_list);
+EXPORT_SYMBOL_GPL(pwrkey_irq_notifier_list);
 static int pm8941_reboot_notify(struct notifier_block *nb,
 				unsigned long code, void *unused)
 {
@@ -173,11 +159,84 @@ static int pm8941_reboot_notify(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+typedef int (*mi_display_pwrkey_callback)(int);
+mi_display_pwrkey_callback mi_display_pwrkey_cb = NULL;
+void mi_display_pwrkey_callback_set(mi_display_pwrkey_callback cb)
+{
+	mi_display_pwrkey_cb = cb;
+	printk(KERN_INFO "%s: func %pF is set.\n", __func__, cb);
+	return;
+}
+EXPORT_SYMBOL(mi_display_pwrkey_callback_set);
+
+void show_state_filter_single(unsigned long state_filter)
+{
+	struct task_struct *g, *p;
+
+#if BITS_PER_LONG == 32
+	printk(KERN_INFO
+		"  task 			   PC stack   pid father\n");
+#else
+	printk(KERN_INFO
+		"  task 					   PC stack   pid father\n");
+#endif
+	rcu_read_lock();
+	for_each_process_thread(g, p) {
+		/*
+		 * reset the NMI-timeout, listing all files on a slow
+		 * console might take a lot of time:
+		 * Also, reset softlockup watchdogs on all CPUs, because
+		 * another CPU might be blocked waiting for us to process
+		 * an IPI.
+		 */
+		touch_nmi_watchdog();
+		//touch_all_softlockup_watchdogs();
+		if (p->__state == state_filter)
+			sched_show_task(p);
+	}
+	rcu_read_unlock();
+}
+
 static irqreturn_t pm8941_pwrkey_irq(int irq, void *_data)
 {
 	struct pm8941_pwrkey *pwrkey = _data;
 	unsigned int sts;
 	int err;
+
+	if (!strcmp(pwrkey->data->name,"pmic_pwrkey_bark")){
+		err = regmap_read(pwrkey->regmap,
+			pwrkey->baseaddr + PON_RT_STS, &sts);
+		if (err)
+			return IRQ_HANDLED;
+		sts &= pwrkey->data->status_bit;
+		if (sts) {
+			if(mi_display_pwrkey_cb != NULL){
+				mi_display_pwrkey_cb(PMIC_PWRKEY_BARK_TRIGGER);
+			}
+			raw_notifier_call_chain(&pwrkey_irq_notifier_list, 0, NULL);
+		}
+		return IRQ_HANDLED;
+	}
+	if (!strcmp(pwrkey->data->name,"pmic_pwrkey_resin_bark")){
+		err = regmap_read(pwrkey->regmap,
+			pwrkey->baseaddr + PON_RT_STS, &sts);
+		if (err)
+			return IRQ_HANDLED;
+		sts &= pwrkey->data->status_bit;
+		if(sts){
+			int tmp_console = console_loglevel;
+			if(mi_display_pwrkey_cb != NULL){
+				mi_display_pwrkey_cb(PMIC_PWRKEY_BARK_TRIGGER);
+			}
+			pr_info("pwrkey_resin_bark_irq trigger, start D&R task info");
+			console_loglevel = 15;
+			pr_info("------ collect D&R-state processes info before long comb key ------\n");
+			show_state_filter_single(TASK_UNINTERRUPTIBLE);
+			show_state_filter_single(TASK_RUNNING);
+			pr_info("------ end collecting D&R-state processes info ------\n");
+			console_loglevel = tmp_console;
+		}
+	}
 
 	if (pwrkey->sw_debounce_time_us) {
 		if (ktime_before(ktime_get(), pwrkey->sw_debounce_end_time)) {
@@ -211,6 +270,12 @@ static irqreturn_t pm8941_pwrkey_irq(int irq, void *_data)
 	input_report_key(pwrkey->input, pwrkey->code, sts);
 	input_sync(pwrkey->input);
 
+	if(pwrkey->code == KEY_POWER && !sts){
+		if(mi_display_pwrkey_cb != NULL){
+			mi_display_pwrkey_cb(PMIC_PWRKEY_TRIGGER);
+		}
+	}
+
 	return IRQ_HANDLED;
 }
 
@@ -243,69 +308,6 @@ static int pm8941_pwrkey_sw_debounce_init(struct pm8941_pwrkey *pwrkey)
 
 	dev_dbg(pwrkey->dev, "SW debounce time = %u us\n",
 		pwrkey->sw_debounce_time_us);
-
-	return 0;
-}
-
-static int pmar2230_btn_hw_init(struct pm8941_pwrkey *pwrkey)
-{
-	u32 deb_cnt, deb_lsb, deb_msb, pol_val;
-	int error;
-
-	error = regmap_update_bits(pwrkey->regmap,
-						pwrkey->baseaddr + BTN_GPIO_MUX_SEL,
-						BTN_MUX_SEL_MASK,
-						BTN_MUX_SEL_BTN);
-	if (error) {
-		dev_err(pwrkey->dev, "failed to set MUX_SEL: %d\n", error);
-		return error;
-	}
-
-	if (of_property_read_bool(pwrkey->dev->of_node, "active-high"))
-		pol_val = 0;
-	else
-		pol_val = BTN_INV_DEB_IN;
-
-	error = regmap_update_bits(pwrkey->regmap,
-							pwrkey->baseaddr + BTN_POLARITY,
-							BTN_INV_DEB_IN,
-							pol_val);
-	if (error) {
-		dev_err(pwrkey->dev, "failed to set polarity: %d\n", error);
-		return error;
-	}
-
-	deb_cnt = pwrkey->req_delay / BTN_DEB_CLK_US;
-	deb_cnt = clamp_val(deb_cnt, 1U, 0x3FFU);
-	deb_lsb = deb_cnt & BTN_DEB_CNT_LSB_MASK;
-	deb_msb = (deb_cnt >> 8) & BTN_DEB_CNT_MSB_MASK;
-
-	error = regmap_write(pwrkey->regmap,
-		pwrkey->baseaddr + BTN_DEBOUNCER_CFG1,
-		deb_lsb);
-	if (error) {
-		dev_err(pwrkey->dev, "failed to set DEB_CFG1: %d\n", error);
-		return error;
-	}
-
-	error = regmap_write(pwrkey->regmap,
-	pwrkey->baseaddr + BTN_DEBOUNCER_CFG2,
-	deb_msb);
-	if (error) {
-		dev_err(pwrkey->dev, "failed to set DEB_CFG2: %d\n", error);
-		return error;
-	}
-
-	error = regmap_update_bits(pwrkey->regmap,
-						pwrkey->baseaddr + BTN_EN_CTL,
-						BTN_EN_DEB | BTN_DEB_IN_POL |
-						BTN_DEB_OUT_SEL_MASK | BTN_EN_TMR_SEL,
-						BTN_EN_DEB | BTN_DEB_IN_POL |
-						BTN_DEB_OUT_SEL_DEBOUNCED | BTN_EN_TMR_SEL);
-	if (error) {
-		dev_err(pwrkey->dev, "failed to set EN_CTL: %d\n", error);
-		return error;
-	}
 
 	return 0;
 }
@@ -516,10 +518,7 @@ static int pm8941_pwrkey_probe(struct platform_device *pdev)
 	pwrkey->input->name = pwrkey->data->name;
 	pwrkey->input->phys = pwrkey->data->phys;
 
-	if (pwrkey->subtype == PON_SUBTYPE_BTN)
-		error = pmar2230_btn_hw_init(pwrkey);
-	else
-		error = pm8941_pwrkey_hw_init(pwrkey);
+	error = pm8941_pwrkey_hw_init(pwrkey);
 	if (error) {
 		dev_err(&pdev->dev, "Failed to initialize H/W : %d\n", error);
 		return error;
@@ -607,14 +606,22 @@ static const struct pm8941_data pon_gen3_resin_data = {
 	.has_pon_pbs = true,
 };
 
-static const struct pm8941_data pmar2230_btn_data = {
-	.status_bit                  = BTN_RT_STS_BIT,
-	.pull_up_bit                 = 0,
-	.name                        = "pmar2230_btn",
-	.phys                        = "pmar2230_btn/input0",
+static const struct pm8941_data pon_gen3_pwrkey_bark_data = {
+	.status_bit = PON_GEN3_KPDPWR_N_SET,
+	.name = "pmic_pwrkey_bark",
+	.phys = "pmic_pwrkey_bark/input0",
 	.supports_ps_hold_poff_config = false,
-	.supports_debounce_config    = true,
-	.has_pon_pbs                 = false,
+	.supports_debounce_config = false,
+	.has_pon_pbs = true,
+};
+
+static const struct pm8941_data pon_gen3_pwrkey_resin_bark_data = {
+	.status_bit = PON_GEN3_KPDPWR_N_SET,
+	.name = "pmic_pwrkey_resin_bark",
+	.phys = "pmic_pwrkey_resin_bark/input0",
+	.supports_ps_hold_poff_config = false,
+	.supports_debounce_config = false,
+	.has_pon_pbs = true,
 };
 
 static const struct of_device_id pm8941_pwr_key_id_table[] = {
@@ -622,7 +629,8 @@ static const struct of_device_id pm8941_pwr_key_id_table[] = {
 	{ .compatible = "qcom,pm8941-resin", .data = &resin_data },
 	{ .compatible = "qcom,pmk8350-pwrkey", .data = &pon_gen3_pwrkey_data },
 	{ .compatible = "qcom,pmk8350-resin", .data = &pon_gen3_resin_data },
-	{ .compatible = "qcom,pmar2230-btn",       .data = &pmar2230_btn_data },
+	{ .compatible = "qcom,pmk8350-pwrkey-bark", .data = &pon_gen3_pwrkey_bark_data },
+	{ .compatible = "qcom,pmk8350-pwrkey-resin-bark", .data = &pon_gen3_pwrkey_resin_bark_data },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, pm8941_pwr_key_id_table);

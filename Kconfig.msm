@@ -156,4 +156,6 @@ source "$(KCONFIG_EXT_PREFIX)drivers/block/zram/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/input/fingerprint/mi_fp/Kconfig"
 
+source "$(KCONFIG_EXT_PREFIX)drivers/input/misc/cs40l26_haptic/Kconfig"
+
 endmenu

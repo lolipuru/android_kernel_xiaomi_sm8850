@@ -1,4 +1,7 @@
+load(":drivers/input/misc/cs40l26_haptic/modules.bzl", register_cs40l26_haptic = "register_modules")
+
 def register_modules(registry):
+    register_cs40l26_haptic(registry)
     registry.register(
         name = "drivers/input/misc/pm8941-pwrkey",
         out = "pm8941-pwrkey.ko",

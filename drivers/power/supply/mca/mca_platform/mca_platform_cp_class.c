@@ -768,6 +768,18 @@ int platform_class_cp_set_pmid2outuvp_th(unsigned int role, int value)
 }
 EXPORT_SYMBOL(platform_class_cp_set_pmid2outuvp_th);
 
+int platform_class_cp_set_vout2out_uvp(unsigned int role, bool en)
+{
+	struct platform_cp_class_ops_data *temp_data =
+		platform_cp_class_get_ic_ops(role);
+
+	if (platform_cp_ops_invalid(temp_data, cp_set_vout2out_uvp))
+		return -1;
+
+	return temp_data->ops->cp_set_vout2out_uvp(en, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_cp_set_vout2out_uvp);
+
 static int platform_cp_dev_parse_dt(struct platform_cp_dev *cp)
 {
 	struct device_node *node = cp->dev->of_node;

@@ -115,6 +115,7 @@ struct platform_class_cp_ops {
 	int (*cp_enable_vbus_errorlo)(bool, void *data);
 	int (*cp_set_manual_revchg_mode)(bool, void *data);
 	int (*cp_set_cp_reverse_mode)(bool, void *data);
+	int (*cp_set_vout2out_uvp)(bool, void *data);
 };
 int platform_class_cp_register_ops(unsigned int role,
 				   struct platform_class_cp_ops *ops,
@@ -175,4 +176,5 @@ int platform_class_cp_get_tdie(unsigned int role, int *tdie);
 int platform_class_cp_set_qb(unsigned int role, bool en);
 int platform_class_cp_set_rcp(unsigned int role, bool en);
 int platform_class_cp_set_pmid2outuvp_th(unsigned int role, int value);
+int platform_class_cp_set_vout2out_uvp(unsigned int role, bool en);
 #endif /* _MCA_PLATFORM_PLATFORM_CP_CLASS_H_ */

@@ -186,6 +186,15 @@ struct fuelguage_ic_ops {
 	int (*fg_ic_get_manufacturing_date)(void *data, u8 *buf);
 	int (*fg_ic_set_first_usage_date)(void *data, const char *date);
 	int (*fg_ic_qbg_send_chg_data)(void *data);
+	int (*fg_ic_get_vsiloss)(void *data, int *vsiloss);
+	int (*fg_ic_get_iaver)(void *data, int *iaver);
+	int (*fg_ic_get_batt_sn)(void *data, char *sn);
+	int (*fg_ic_get_csd_flag)(void *data, bool *csd);
+	int (*fg_ic_get_batt_qmax)(void *data, int *qmax);
+	int (*fg_ic_get_fg_vendor)(void *data, int *vendor);
+	int (*fg_ic_set_reboot_vol_thr)(void *data, int thr);
+	int (*fg_ic_get_fast_mode_times)(void *data, int *times);
+	int (*fg_ic_set_fast_mode_times)(void *data, int times);
 };
 int platform_fg_ic_ops_register(unsigned int ic_role, void *data,
 				struct fuelguage_ic_ops *platform_fg_ops);
@@ -258,4 +267,13 @@ int platform_fg_ops_get_manufacturing_date(unsigned int ic_role, u8 *buf);
 void platform_fg_ops_set_first_usage_date(unsigned int ic_role,
 					  const char *date);
 void platform_fg_ops_qbg_send_chg_data(unsigned int ic_role);
+int platform_fg_ops_get_vsiloss(unsigned int ic_role, int *vsiloss);
+int platform_fg_ops_get_iaver(unsigned int ic_role, int *iaver);
+int platform_fg_ops_get_batt_sn(unsigned int ic_role, char *sn);
+int platform_fg_ops_get_csd_flag(unsigned int ic_role, bool *csd);
+int platform_fg_ops_get_batt_qmax(unsigned int ic_role, int *qmax);
+int platform_fg_ops_get_fg_vendor(unsigned int ic_role, int *vendor);
+int platform_fg_ops_set_reboot_vol_thr(unsigned int ic_role, int thr);
+int platform_fg_ops_get_fast_mode_times(unsigned int ic_role, int *times);
+int platform_fg_ops_set_fast_mode_times(unsigned int ic_role, int times);
 #endif /* _MCA_PLATFORM_PLATFORM_FG_IC_OPS_H_ */

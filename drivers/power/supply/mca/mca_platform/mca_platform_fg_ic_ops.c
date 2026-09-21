@@ -793,6 +793,105 @@ void platform_fg_ops_qbg_send_chg_data(unsigned int ic_role)
 }
 EXPORT_SYMBOL(platform_fg_ops_qbg_send_chg_data);
 
+int platform_fg_ops_get_vsiloss(unsigned int ic_role, int *vsiloss)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_vsiloss))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_vsiloss(temp_info->data, vsiloss);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_vsiloss);
+
+int platform_fg_ops_get_iaver(unsigned int ic_role, int *iaver)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_iaver))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_iaver(temp_info->data, iaver);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_iaver);
+
+int platform_fg_ops_get_batt_sn(unsigned int ic_role, char *sn)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_batt_sn))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_batt_sn(temp_info->data, sn);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_batt_sn);
+
+int platform_fg_ops_get_csd_flag(unsigned int ic_role, bool *csd)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_csd_flag))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_csd_flag(temp_info->data, csd);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_csd_flag);
+
+int platform_fg_ops_get_batt_qmax(unsigned int ic_role, int *qmax)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_batt_qmax))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_batt_qmax(temp_info->data, qmax);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_batt_qmax);
+
+int platform_fg_ops_get_fg_vendor(unsigned int ic_role, int *vendor)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_fg_vendor))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_fg_vendor(temp_info->data, vendor);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_fg_vendor);
+
+int platform_fg_ops_set_reboot_vol_thr(unsigned int ic_role, int thr)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_reboot_vol_thr))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_reboot_vol_thr(temp_info->data, thr);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_reboot_vol_thr);
+
+int platform_fg_ops_get_fast_mode_times(unsigned int ic_role, int *times)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_get_fast_mode_times))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_get_fast_mode_times(temp_info->data, times);
+}
+EXPORT_SYMBOL(platform_fg_ops_get_fast_mode_times);
+
+int platform_fg_ops_set_fast_mode_times(unsigned int ic_role, int times)
+{
+	struct fuelguage_info *temp_info = platform_get_fg_ic_ops(ic_role);
+
+	if (platform_fg_ops_invalid(temp_info, fg_ic_set_fast_mode_times))
+		return -EOPNOTSUPP;
+
+	return temp_info->ops->fg_ic_set_fast_mode_times(temp_info->data, times);
+}
+EXPORT_SYMBOL(platform_fg_ops_set_fast_mode_times);
+
 static struct platform_driver platform_fg_ops_driver = {
 	.driver	= {
 		.name = "platform_fg_ops",

@@ -45,6 +45,29 @@ int get_smem_battery_info(int *is_zero_speed)
 }
 EXPORT_SYMBOL(get_smem_battery_info);
 
+int mca_qcom_smem_is_zero_speed(void)
+{
+	struct mca_smem_battery_info *info;
+	int ret;
+
+	ret = qcom_smem_alloc(QCOM_SMEM_HOST_ANY, SMEM_ID_VENDOR_BATTERY_INFO,
+			      sizeof(struct mca_smem_battery_info));
+	if (ret < 0 && ret != -EEXIST) {
+		mca_log_err("unable to allocate shared state entry\n");
+		return 0;
+	}
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_ID_VENDOR_BATTERY_INFO,
+			     NULL);
+	if (IS_ERR(info)) {
+		mca_log_err("Unable to acquire shared state entry\n");
+		return 0;
+	}
+
+	return info->zero_speed_start_mode;
+}
+EXPORT_SYMBOL(mca_qcom_smem_is_zero_speed);
+
 int get_smem_battery_verify_result(u8 *verified, u8 *chip_ok)
 {
 	struct mca_smem_battery_info *info;

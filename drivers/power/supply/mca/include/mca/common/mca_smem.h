@@ -6,5 +6,6 @@
 int get_smem_battery_info(int *is_zero_speed);
 int get_smem_battery_verify_result(u8 *verified, u8 *chip_ok);
 int get_smem_battery_cell_sn(u32 *cell_sn);
+int mca_qcom_smem_is_zero_speed(void);
 
 #endif /* _MCA_COMMON_MCA_SMEM_H_ */

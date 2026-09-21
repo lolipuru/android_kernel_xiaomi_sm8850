@@ -96,6 +96,14 @@ struct platform_class_buckchg_ops {
 	int (*get_pack_tbat)(void *data, int *);
 	int (*get_aicl_status)(void *data, int *);
 	int (*set_too_hot_limit)(void *data, int);
+	int (*get_icl_status)(void *data, int *);
+	int (*get_ovp_vth)(void *data, int *);
+	int (*get_usb_input_swap)(void *data, int *);
+	int (*get_usbin_collapse_rt_sts)(void *data, int *);
+	int (*get_wls_input_swap)(void *data, int *);
+	int (*set_audio_status)(void *data, int);
+	int (*set_ovp_vth)(void *data, int);
+	int (*set_screen_status)(void *data, bool);
 };
 
 int platform_class_buckchg_ops_register(unsigned int role, void *data,
@@ -198,5 +206,13 @@ int platform_class_buckchg_ops_get_pack_ibat(unsigned int role, int *ibat);
 int platform_class_buckchg_ops_get_pack_tbat(unsigned int role, int *tbat);
 int platform_class_buckchg_ops_get_aicl_status(unsigned int role, int *status);
 int platform_class_buckchg_ops_set_too_hot_limit(unsigned int role, int limit);
+int platform_class_buckchg_ops_get_icl_status(unsigned int role, int *icl_status);
+int platform_class_buckchg_ops_get_ovp_vth(unsigned int role, int *ovp_vth);
+int platform_class_buckchg_ops_get_usb_input_swap(unsigned int role, int *swap);
+int platform_class_buckchg_ops_get_usbin_collapse_rt_sts(unsigned int role, int *sts);
+int platform_class_buckchg_ops_get_wls_input_swap(unsigned int role, int *swap);
+int platform_class_buckchg_ops_set_audio_status(unsigned int role, int audio_status);
+int platform_class_buckchg_ops_set_ovp_vth(unsigned int role, int ovp_vth);
+int platform_class_buckchg_ops_set_screen_status(unsigned int role, bool screen_status);
 
 #endif /* _MCA_PLATFORM_PLATFORM_BUCKCHG_CLASS_H_ */

@@ -1062,6 +1062,102 @@ int platform_class_buckchg_ops_set_too_hot_limit(unsigned int role, int limit)
 }
 EXPORT_SYMBOL(platform_class_buckchg_ops_set_too_hot_limit);
 
+int platform_class_buckchg_ops_get_icl_status(unsigned int role, int *icl_status)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, get_icl_status))
+		return -1;
+
+	return temp_data->ops->get_icl_status(temp_data->data, icl_status);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_get_icl_status);
+
+int platform_class_buckchg_ops_get_ovp_vth(unsigned int role, int *ovp_vth)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, get_ovp_vth))
+		return -1;
+
+	return temp_data->ops->get_ovp_vth(temp_data->data, ovp_vth);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_get_ovp_vth);
+
+int platform_class_buckchg_ops_get_usb_input_swap(unsigned int role, int *swap)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, get_usb_input_swap))
+		return -1;
+
+	return temp_data->ops->get_usb_input_swap(temp_data->data, swap);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_get_usb_input_swap);
+
+int platform_class_buckchg_ops_get_usbin_collapse_rt_sts(unsigned int role, int *sts)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, get_usbin_collapse_rt_sts))
+		return -1;
+
+	return temp_data->ops->get_usbin_collapse_rt_sts(temp_data->data, sts);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_get_usbin_collapse_rt_sts);
+
+int platform_class_buckchg_ops_get_wls_input_swap(unsigned int role, int *swap)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, get_wls_input_swap))
+		return -1;
+
+	return temp_data->ops->get_wls_input_swap(temp_data->data, swap);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_get_wls_input_swap);
+
+int platform_class_buckchg_ops_set_audio_status(unsigned int role, int audio_status)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, set_audio_status))
+		return -1;
+
+	return temp_data->ops->set_audio_status(temp_data->data, audio_status);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_set_audio_status);
+
+int platform_class_buckchg_ops_set_ovp_vth(unsigned int role, int ovp_vth)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, set_ovp_vth))
+		return -1;
+
+	return temp_data->ops->set_ovp_vth(temp_data->data, ovp_vth);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_set_ovp_vth);
+
+int platform_class_buckchg_ops_set_screen_status(unsigned int role, bool screen_status)
+{
+	struct platform_class_buckchg_data *temp_data =
+		platform_class_buckchg_get_ops_data(role);
+
+	if (platform_class_buckchg_invalid_ops(temp_data, set_screen_status))
+		return -1;
+
+	return temp_data->ops->set_screen_status(temp_data->data, screen_status);
+}
+EXPORT_SYMBOL(platform_class_buckchg_ops_set_screen_status);
+
 static struct platform_driver platform_class_buckchg_driver = {
 	.driver	= {
 		.name = "platform_class_buckchg",

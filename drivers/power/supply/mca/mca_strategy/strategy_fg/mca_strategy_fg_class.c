@@ -204,6 +204,15 @@ int strategy_class_fg_get_rm(int *rm)
 }
 EXPORT_SYMBOL(strategy_class_fg_get_rm);
 
+int strategy_class_fg_get_comp_rm(int *comp_rm)
+{
+	if (is_invalid_ops(strategy_fg_get_comp_rm))
+		return -1;
+
+	return strategy_fg_class_ops_with_one_para(strategy_fg_get_comp_rm, comp_rm);
+}
+EXPORT_SYMBOL(strategy_class_fg_get_comp_rm);
+
 int strategy_class_fg_get_fcc(int *fcc)
 {
 	if (is_invalid_ops(strategy_fg_get_fcc))
@@ -212,6 +221,15 @@ int strategy_class_fg_get_fcc(int *fcc)
 	return strategy_fg_class_ops_with_one_para(strategy_fg_get_fcc, fcc);
 }
 EXPORT_SYMBOL(strategy_class_fg_get_fcc);
+
+int strategy_class_fg_get_comp_fcc(int *comp_fcc)
+{
+	if (is_invalid_ops(strategy_fg_get_comp_fcc))
+		return -1;
+
+	return strategy_fg_class_ops_with_one_para(strategy_fg_get_comp_fcc, comp_fcc);
+}
+EXPORT_SYMBOL(strategy_class_fg_get_comp_fcc);
 
 int strategy_class_fg_is_chip_ok(void)
 {
@@ -277,6 +295,15 @@ int strategy_class_fg_get_soh(int *soh)
 	return strategy_fg_class_ops_with_one_para(strategy_fg_get_soh, soh);
 }
 EXPORT_SYMBOL(strategy_class_fg_get_soh);
+
+int strategy_class_fg_get_is_support_fast_mode(bool *support)
+{
+	if (is_invalid_ops(strategy_fg_get_is_support_fast_mode))
+		return -1;
+
+	return strategy_fg_class_ops_with_one_para(strategy_fg_get_is_support_fast_mode, support);
+}
+EXPORT_SYMBOL(strategy_class_fg_get_is_support_fast_mode);
 
 int strategy_class_fg_get_temp_offset_flag(int *flag)
 {

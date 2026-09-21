@@ -59,7 +59,9 @@ int strategy_class_fg_get_fastcharge(void);
 int strategy_class_fg_get_authentic(bool *authentic);
 int strategy_class_fg_get_dc(int *dc);
 int strategy_class_fg_get_rm(int *rm);
+int strategy_class_fg_get_comp_rm(int *comp_rm);
 int strategy_class_fg_get_fcc(int *fcc);
+int strategy_class_fg_get_comp_fcc(int *comp_fcc);
 int strategy_class_fg_is_chip_ok(void);
 int strategy_class_fg_get_health(int *health);
 int strategy_class_fg_get_first_termination(int *value);
@@ -67,6 +69,7 @@ int strategy_class_fg_get_pack_vendor_id(int * vendor_id);
 int strategy_class_fg_dual_is_chip_ok(int index);
 int strategy_class_fg_ops_get_thermal_temperature(int * temp);
 int strategy_class_fg_get_soh(int * soh);
+int strategy_class_fg_get_is_support_fast_mode(bool *support);
 int strategy_class_fg_get_temp_offset_flag(int *flag);
 
 #endif /* _MCA_STRATEGY_STRATEGY_FG_CLASS_H_ */

@@ -18,5 +18,7 @@ def register_modules(registry):
             "drivers/power/supply/mca/mca_common/mca_log",
             "drivers/power/supply/mca/mca_common/mca_parse_dts",
             "drivers/power/supply/mca/mca_platform/mca_platform_buckchg_class",
+            "drivers/power/supply/mca/mca_common",
+            "drivers/power/supply/mca/mca_strategy/strategy_fg/mca_strategy_fg_class",
         ],
     )

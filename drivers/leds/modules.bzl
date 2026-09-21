@@ -16,6 +16,7 @@ def register_modules(registry):
         deps = [
             # do not sort
             "drivers/power/supply/qti_battery_charger",
+            "drivers/power/supply/mca/mca_qcom_subpmic_proxy/mca_qcom_subpmic_proxy",
             "drivers/soc/qcom/panel_event_notifier",
             "drivers/soc/qcom/qti_pmic_glink",
             "drivers/soc/qcom/pdr_interface",

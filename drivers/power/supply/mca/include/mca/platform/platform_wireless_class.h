@@ -117,6 +117,15 @@ struct platform_class_wireless_ops {
 	int (*wls_get_tx_iout)(int *, void *data);
 	int (*wls_get_tx_vout)(int *, void *data);
 	int (*wls_get_rx_brg_status)(int *, void *data);
+	int (*wls_get_tx_type)(int *, void *data);
+	int (*wls_get_saved_fw_version)(int *, void *data);
+	int (*wls_check_ic_fw_version)(int *, void *data);
+	int (*wls_download_fw_from_image)(void *data);
+	int (*wls_get_hall_s_gpio_status)(int *, void *data);
+	int (*wls_get_hall_n_gpio_status)(int *, void *data);
+	int (*wls_check_fw_update)(bool *, void *data);
+	int (*wls_set_tx_cust_operation)(void *data);
+	int (*wls_set_cp_mode)(int, void *data);
 };
 int platform_class_wireless_register_ops(
 	unsigned int role, void *data, struct platform_class_wireless_ops *ops);
@@ -223,4 +232,13 @@ int platform_class_wireless_set_external_boost_enable(unsigned int role, bool en
 int platform_class_wireless_get_tx_iout(unsigned int role, int *iout);
 int platform_class_wireless_get_tx_vout(unsigned int role, int *vout);
 int platform_class_wireless_get_rx_brg_status(unsigned int role, int *status);
+int platform_class_wireless_get_tx_type(unsigned int role, int *type);
+int platform_class_wireless_get_saved_fw_version(unsigned int role, int *version);
+int platform_class_wireless_check_ic_fw_version(unsigned int role, int *version);
+int platform_class_wireless_download_fw_from_image(unsigned int role);
+int platform_class_wireless_get_hall_s_gpio_status(unsigned int role, int *status);
+int platform_class_wireless_get_hall_n_gpio_status(unsigned int role, int *status);
+int platform_class_wireless_check_fw_update(unsigned int role, bool *update);
+int platform_class_wireless_set_tx_cust_operation(unsigned int role);
+int platform_class_wireless_set_cp_mode(unsigned int role, int mode);
 #endif /* _MCA_PLATFORM_PLATFORM_WIRELESS_CLASS_H_ */

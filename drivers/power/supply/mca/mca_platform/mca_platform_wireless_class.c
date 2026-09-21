@@ -1105,6 +1105,114 @@ int platform_class_wireless_get_rx_brg_status(unsigned int role, int *status)
 }
 EXPORT_SYMBOL(platform_class_wireless_get_rx_brg_status);
 
+int platform_class_wireless_get_tx_type(unsigned int role, int *type)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_get_tx_type))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_get_tx_type(type, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_get_tx_type);
+
+int platform_class_wireless_get_saved_fw_version(unsigned int role, int *version)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_get_saved_fw_version))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_get_saved_fw_version(version, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_get_saved_fw_version);
+
+int platform_class_wireless_check_ic_fw_version(unsigned int role, int *version)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_check_ic_fw_version))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_check_ic_fw_version(version, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_check_ic_fw_version);
+
+int platform_class_wireless_download_fw_from_image(unsigned int role)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_download_fw_from_image))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_download_fw_from_image(temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_download_fw_from_image);
+
+int platform_class_wireless_get_hall_s_gpio_status(unsigned int role, int *status)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_get_hall_s_gpio_status))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_get_hall_s_gpio_status(status, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_get_hall_s_gpio_status);
+
+int platform_class_wireless_get_hall_n_gpio_status(unsigned int role, int *status)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_get_hall_n_gpio_status))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_get_hall_n_gpio_status(status, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_get_hall_n_gpio_status);
+
+int platform_class_wireless_check_fw_update(unsigned int role, bool *update)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_check_fw_update))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_check_fw_update(update, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_check_fw_update);
+
+int platform_class_wireless_set_tx_cust_operation(unsigned int role)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_set_tx_cust_operation))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_set_tx_cust_operation(temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_set_tx_cust_operation);
+
+int platform_class_wireless_set_cp_mode(unsigned int role, int mode)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data, wls_set_cp_mode))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_set_cp_mode(mode, temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_wireless_set_cp_mode);
+
 static int
 platform_wireless_dev_parse_dt(struct platform_wireless_dev *wireless)
 {

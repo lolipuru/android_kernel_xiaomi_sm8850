@@ -232,6 +232,20 @@ int mca_smartchg_get_limit_soc(void)
 }
 EXPORT_SYMBOL(mca_smartchg_get_limit_soc);
 
+int mca_smartchg_set_batt_emerg_soc_limit(int limit)
+{
+	struct smart_charge_info *info = global_smartchg_info;
+
+	if (!info) {
+		mca_log_err("info is null\n");
+		return -EINVAL;
+	}
+
+	info->batt_emerg_soc_limit = limit;
+	return 0;
+}
+EXPORT_SYMBOL(mca_smartchg_set_batt_emerg_soc_limit);
+
 static void smart_charge_report_scene(struct smart_charge_info *info, int scene)
 {
 	static int last_report_scene;

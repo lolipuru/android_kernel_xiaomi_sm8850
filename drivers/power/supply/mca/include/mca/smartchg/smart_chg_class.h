@@ -84,5 +84,6 @@ void mca_smartchg_set_board_temp(int board_temp);
 int mca_smartchg_get_board_temp(void);
 int mca_smartchg_is_extreme_cold_enabled(void);
 int mca_smartchg_get_limit_soc(void);
+int mca_smartchg_set_batt_emerg_soc_limit(int limit);
 
 #endif /* _MCA_SMARTCHG_SMART_CHG_CLASS_H_ */

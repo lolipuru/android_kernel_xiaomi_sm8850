@@ -238,6 +238,7 @@ struct smart_charge_info {
 	struct smart_bypass_temp_section
 		bypass_low_lmt[SMART_BYPASS_TEMP_SECTION_MAX];
 	int mishow_config;
+	int batt_emerg_soc_limit;
 };
 
 enum smartchg_attr_list {

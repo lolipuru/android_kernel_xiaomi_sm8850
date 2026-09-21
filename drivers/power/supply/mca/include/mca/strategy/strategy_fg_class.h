@@ -5,12 +5,17 @@
 
 struct strategy_fg_class_ops {
 	int (*strategy_fg_is_init_ok)(void *data);
+	int (*strategy_fg_is_chip_ok)(void *data);
+	int (*strategy_fg_dual_is_chip_ok)(void *data, int index);
 	int (*strategy_fg_get_rsoc)(void *data, int *);
 	int (*strategy_fg_get_soc)(void *data);
 	int (*strategy_fg_get_temp)(void *data, int *);
+	int (*strategy_fg_get_thermal_temperature)(void *data, int *);
 	int (*strategy_fg_get_current)(void *data, int *);
 	int (*strategy_fg_get_voltage)(void *data, int *);
 	int (*strategy_fg_get_cycle)(void *data, int *);
+	int (*strategy_fg_get_rm)(void *data, int *);
+	int (*strategy_fg_get_comp_rm)(void *data, int *);
 	int (*strategy_fg_get_voltage_mean)(void *data, int *);
 	int (*strategy_fg_get_soc_decimal_info)(void *data, int *, int *);
 	bool (*strategy_fg_get_charging_done)(void *data);
@@ -20,15 +25,13 @@ struct strategy_fg_class_ops {
 	int (*strategy_fg_get_fastcharge)(void *data);
 	int (*strategy_fg_get_authentic)(void *data, bool *);
 	int (*strategy_fg_get_dc)(void *data, int *);
-	int (*strategy_fg_get_rm)(void *data, int *);
 	int (*strategy_fg_get_fcc)(void *data, int *);
-	int (*strategy_fg_is_chip_ok)(void *data);
+	int (*strategy_fg_get_comp_fcc)(void *data, int *);
 	int (*strategy_fg_get_health)(void *data, int *);
+	int (*strategy_fg_get_soh)(void *data, int *);
 	int (*strategy_fg_get_first_termination)(void *data, int *);
 	int (*strategy_fg_get_pack_vendor_id)(void *data, int *);
-	int (*strategy_fg_dual_is_chip_ok)(void *data, int index);
-	int (*strategy_fg_get_thermal_temperature)(void *data, int *);
-	int (*strategy_fg_get_soh)(void *data, int *);
+	int (*strategy_fg_get_is_support_fast_mode)(void *data, bool *);
 	int (*strategy_fg_get_temp_offset_flag)(void *data, int *);
 };
 

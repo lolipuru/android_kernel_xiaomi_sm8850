@@ -630,6 +630,17 @@ int protocol_class_pd_get_zimi_cypress_flag(unsigned int port_num, int *zimi_cyp
 }
 EXPORT_SYMBOL(protocol_class_pd_get_zimi_cypress_flag);
 
+int protocol_class_pd_get_support_keep_pdo(unsigned int port_num, bool *support)
+{
+	struct protocol_class_pd_ops_data *temp_data = protocol_class_pd_get_ops_data(port_num);
+
+	if (protocol_class_pd_invalid_ops(temp_data, protocol_pd_get_support_keep_pdo))
+		return -1;
+
+	return temp_data->ops->protocol_pd_get_support_keep_pdo(support, temp_data->data);
+}
+EXPORT_SYMBOL(protocol_class_pd_get_support_keep_pdo);
+
 int protocol_class_pd_get_port_num(void)
 {
 	return g_cur_port;

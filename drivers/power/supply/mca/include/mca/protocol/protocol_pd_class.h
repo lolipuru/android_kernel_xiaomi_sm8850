@@ -105,6 +105,7 @@ struct protocol_class_pd_ops {
 	int (*protocol_pd_get_cc_short_vbus)(int *cc_short_vbus, void *data);
 	int (*protocol_pd_get_suspend_support_status)(bool *pdsuspendsupported, void *data);
 	int (*protocol_pd_get_zimi_cypress_flag)(int *zimi_cypress_flag, void *data);
+	int (*protocol_pd_get_support_keep_pdo)(bool *support, void *data);
 };
 
 int protocol_class_pd_register_ops(unsigned int port_num, struct protocol_class_pd_ops *ops, void *data);
@@ -159,6 +160,7 @@ int protocol_class_pd_get_cc_status(unsigned int port_num, bool *status);
 int protocol_class_pd_get_cc_short_vbus(unsigned int port_num, int *cc_short_vbus);
 int protocol_class_pd_get_suspend_support_status(unsigned int port_num, bool *pdsuspendsupported);
 int protocol_class_pd_get_zimi_cypress_flag(unsigned int port_num, int *zimi_cypress_flag);
+int protocol_class_pd_get_support_keep_pdo(unsigned int port_num, bool *support);
 int protocol_class_pd_get_port_num(void);
 
 #endif /* _MCA_PROTOCOL_PROTOCOL_PD_CLASS_H_ */

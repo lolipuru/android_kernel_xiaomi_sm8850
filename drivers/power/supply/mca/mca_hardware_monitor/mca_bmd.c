@@ -82,6 +82,7 @@ enum bmd_scheme {
 };
 
 static int g_request_hw_resource_retry_count;
+static struct mca_bmd_dev *g_bmd_dev;
 
 static bool mca_bmd_get_btb_status(struct mca_bmd_dev *info, int index)
 {
@@ -501,11 +502,32 @@ static int mca_bmd_probe(struct platform_device *pdev)
 			msecs_to_jiffies(MONITOR_HEARTBEAT_TIMER_MS));
 
 	mca_log_err("%s success\n", __func__);
+	g_bmd_dev = info;
 	return 0;
 }
 
+bool mca_bmd_is_batt_missing(void)
+{
+	if (!g_bmd_dev)
+		return false;
+
+	return g_bmd_dev->batt_missing;
+}
+EXPORT_SYMBOL(mca_bmd_is_batt_missing);
+
+void mca_bmd_force_detection(void)
+{
+	if (!g_bmd_dev)
+		return;
+
+	cancel_delayed_work_sync(&g_bmd_dev->monitor_bmd_work);
+	schedule_delayed_work(&g_bmd_dev->monitor_bmd_work, 0);
+}
+EXPORT_SYMBOL(mca_bmd_force_detection);
+
 static int mca_bmd_remove(struct platform_device *pdev)
 {
+	g_bmd_dev = NULL;
 	return 0;
 }
 

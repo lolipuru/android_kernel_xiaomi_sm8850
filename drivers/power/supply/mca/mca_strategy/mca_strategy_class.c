@@ -91,6 +91,19 @@ int mca_strategy_ops_register(unsigned int type, mca_strategy_func func,
 }
 EXPORT_SYMBOL(mca_strategy_ops_register);
 
+bool mca_strategy_is_support_pps_100w(void)
+{
+	struct mca_strategy_func_data *temp_data = mca_strategy_get_func_data(STRATEGY_FUNC_TYPE_BUCK_CHARGE);
+	int val = 0;
+
+	if (!temp_data || !temp_data->get_func)
+		return false;
+
+	temp_data->get_func(18, &val, temp_data->data);
+	return val == 1;
+}
+EXPORT_SYMBOL(mca_strategy_is_support_pps_100w);
+
 static struct platform_driver mca_strategy_class_driver = {
 	.driver	= {
 		.name = "mca_strategy_class",

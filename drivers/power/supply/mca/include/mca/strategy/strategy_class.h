@@ -100,6 +100,7 @@ int mca_strategy_func_set_config(int type, int config, int value);
 int mca_strategy_ops_register(unsigned int type, mca_strategy_func func,
 			      mca_strategy_get_status get_func,
 			      mca_strategy_set_config set_config, void *data);
+bool mca_strategy_is_support_pps_100w(void);
 bool mca_bmd_is_batt_missing(void);
 void mca_bmd_force_detection(void);
 

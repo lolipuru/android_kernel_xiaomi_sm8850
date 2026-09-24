@@ -842,7 +842,7 @@ static int gpio_mi_t1_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int gpio_mi_t1_remove(struct platform_device *pdev)
+static void gpio_mi_t1_remove(struct platform_device *pdev)
 {
 	struct mi_t1_gpio_data *mi_t1_data = platform_get_drvdata(pdev);
 	mi_t1_modem_deconfig(mi_t1_data);
@@ -851,8 +851,6 @@ static int gpio_mi_t1_remove(struct platform_device *pdev)
 	dev_pm_clear_wake_irq(mi_t1_data->dev);
 
 	mutex_destroy(&mi_t1_data->lock);
-
-	return 0;
 }
 
 

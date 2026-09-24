@@ -581,9 +581,8 @@ static int adsp_pd_protocol_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int adsp_pd_protocol_remove(struct platform_device *pdev)
+static void adsp_pd_protocol_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static void adsp_pd_protocol_shutdown(struct platform_device *pdev)

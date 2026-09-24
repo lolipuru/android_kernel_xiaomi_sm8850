@@ -5689,10 +5689,9 @@ static int mca_quick_charge_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mca_quick_charge_remove(struct platform_device *pdev)
+static void mca_quick_charge_remove(struct platform_device *pdev)
 {
 	mca_quick_charge_remove_group(&pdev->dev);
-	return 0;
 }
 
 static const struct of_device_id mca_quick_charge_info_of_match[] = {

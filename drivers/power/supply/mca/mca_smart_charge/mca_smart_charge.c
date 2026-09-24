@@ -992,7 +992,7 @@ static void smart_charge_handle_bypass_chg(struct smart_charge_info *info)
 
 report:
 	mca_log_err("for_bypass [%d->%d] fcc[%d %d]\n", info->last_bypass_state,
-		    state, fcc, info->last_bypass_fcc);
+		     state, fcc, info->last_bypass_fcc);
 	if (info->last_bypass_state != state) {
 		info->last_bypass_state = state;
 		if (state == 0)
@@ -1868,7 +1868,7 @@ error1:
 	return -1;
 }
 
-static int smart_charge_remove(struct platform_device *pdev)
+static void smart_charge_remove(struct platform_device *pdev)
 {
 	struct smart_charge_info *info = platform_get_drvdata(pdev);
 
@@ -1880,7 +1880,6 @@ static int smart_charge_remove(struct platform_device *pdev)
 	mca_event_block_notify_unregister(MCA_EVENT_TYPE_PANEL,
 					  &info->panel_nb);
 
-	return 0;
 }
 
 static const struct of_device_id match_table[] = {

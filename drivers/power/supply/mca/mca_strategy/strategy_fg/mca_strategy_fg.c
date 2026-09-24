@@ -4141,10 +4141,9 @@ static int strategy_fg_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int strategy_fg_remove(struct platform_device *pdev)
+static void strategy_fg_remove(struct platform_device *pdev)
 {
 	strategy_fg_auth_remove_group(&pdev->dev);
-	return 0;
 }
 
 static int strategy_fg_suspend(struct platform_device *pdev, pm_message_t state)

@@ -525,10 +525,9 @@ void mca_bmd_force_detection(void)
 }
 EXPORT_SYMBOL(mca_bmd_force_detection);
 
-static int mca_bmd_remove(struct platform_device *pdev)
+static void mca_bmd_remove(struct platform_device *pdev)
 {
 	g_bmd_dev = NULL;
-	return 0;
 }
 
 static void mca_bmd_shutdown(struct platform_device *pdev)

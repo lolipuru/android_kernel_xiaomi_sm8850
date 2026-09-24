@@ -1287,9 +1287,8 @@ static int mca_buckchg_jeita_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mca_buckchg_jeita_remove(struct platform_device *pdev)
+static void mca_buckchg_jeita_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static void mca_buckchg_jeita_shutdown(struct platform_device *pdev)

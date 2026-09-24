@@ -1295,9 +1295,8 @@ err:
 	return rc;
 }
 
-static int qcom_subpmic_remove(struct platform_device *pdev)
+static void qcom_subpmic_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static void qcom_subpmic_shutdown(struct platform_device *pdev)

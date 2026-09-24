@@ -3069,9 +3069,8 @@ static int mca_wireless_quick_charge_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mca_wireless_quick_charge_remove(struct platform_device *pdev)
+static void mca_wireless_quick_charge_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static void mca_wireless_quick_charge_shutdown(struct platform_device *pdev)

@@ -420,9 +420,8 @@ static int mca_adsp_glink_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mca_adsp_glink_remove(struct platform_device *pdev)
+static void mca_adsp_glink_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static const struct of_device_id mca_adsp_match_table[] = {

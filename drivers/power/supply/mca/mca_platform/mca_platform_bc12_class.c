@@ -167,9 +167,8 @@ static int platform_class_bc12_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int platform_class_bc12_remove(struct platform_device *pdev)
+static void platform_class_bc12_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 static void platform_class_bc12_shutdown(struct platform_device *pdev)

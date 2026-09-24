@@ -47,8 +47,8 @@
 #include <mca/common/mca_hwid.h>
 #include "inc/charger_partition.h"
 #include <mca/shared_memory/charger_partition_class.h>
-#include "hwid.h"
-#include "sd.h"
+#include <hwid.h>
+#include "drivers/scsi/sd.h"
 
 #define CHARGER_PART_PLATFORM_V9 9
 #define CHARGER_PART_NUMBER_V9 25

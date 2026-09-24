@@ -35,6 +35,7 @@ struct mca_log_charge_log_ops {
 	int (*dump_log_context)(void *data, char *buf, int size);
 };
 
+#if IS_ENABLED(CONFIG_XM_POWER_SUPPLY)
 __printf(1, 2) void __mca_log_err(const char *format, ...);
 __printf(1, 2) void __mca_log_info(const char *format, ...);
 __printf(1, 2) void __mca_log_debug(const char *format, ...);
@@ -43,6 +44,16 @@ void mca_log_charge_log_register(enum mca_charge_log_id_ele type,
 				 struct mca_log_charge_log_ops *ops,
 				 void *data);
 int mca_log_get_charge_boot_mode(void);
+#else
+static inline __printf(1, 2) void __mca_log_err(const char *format, ...) {}
+static inline __printf(1, 2) void __mca_log_info(const char *format, ...) {}
+static inline __printf(1, 2) void __mca_log_debug(const char *format, ...) {}
+
+static inline void mca_log_charge_log_register(enum mca_charge_log_id_ele type,
+					       struct mca_log_charge_log_ops *ops,
+					       void *data) {}
+static inline int mca_log_get_charge_boot_mode(void) { return 0; }
+#endif
 
 #define _mca_log_err(fmt, ...) __mca_log_err(fmt, ##__VA_ARGS__)
 #define _mca_log_info(fmt, ...) __mca_log_info(fmt, ##__VA_ARGS__)

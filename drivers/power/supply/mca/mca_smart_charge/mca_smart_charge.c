@@ -90,7 +90,7 @@ static struct mca_smartchg_if_ops *mca_smartchg_if_get_ops(unsigned int type)
 int mca_smartchg_if_ops_register(struct mca_smartchg_if_ops *ops)
 {
 	if (!ops) {
-		mca_log_err("ops invalid %d\n");
+		mca_log_err("ops invalid\n");
 		return -1;
 	}
 
@@ -991,7 +991,7 @@ static void smart_charge_handle_bypass_chg(struct smart_charge_info *info)
 	}
 
 report:
-	mca_log_err("for_bypass [%d->%d] fcc[%d %d]\n", info->last_bypass_state,
+	mca_log_info("bypass[%d->%d] fcc[%d %d]\n", info->last_bypass_state,
 		     state, fcc, info->last_bypass_fcc);
 	if (info->last_bypass_state != state) {
 		info->last_bypass_state = state;
@@ -1584,8 +1584,8 @@ static int smart_charge_mmap(struct file *filp, struct vm_area_struct *vma)
 			      virt_to_phys(info->mmap_addr) >> PAGE_SHIFT,
 			      vma->vm_end - vma->vm_start, vma->vm_page_prot);
 
-	mca_log_err("vma start 0x%x, prot %d\n", vma->vm_start,
-		    vma->vm_page_prot);
+	mca_log_err("vma start 0x%lx, prot 0x%lx\n", vma->vm_start,
+		    (unsigned long)pgprot_val(vma->vm_page_prot));
 	info->map_flag = 1;
 
 	if (ret)

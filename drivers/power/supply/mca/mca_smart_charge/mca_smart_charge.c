@@ -1003,15 +1003,11 @@ report:
 		info->last_bypass_fcc = fcc;
 }
 
-static void smart_charge_handle_mishow_config(struct smart_charge_info *info)
+static void handle_mishow_config(struct smart_charge_info *info)
 {
-	const struct mca_hwid *hwid = mca_get_hwid_info();
 	bool mishow = false;
 
-	if (!hwid || mca_log_get_charge_boot_mode() == 0)
-		return;
-	if (hwid->platform_version != HARDWARE_PROJECT_O8 &&
-	    hwid->platform_version != HARDWARE_PROJECT_O9)
+	if (mca_log_get_charge_boot_mode() == 0)
 		return;
 
 	charger_partition_get_mishow(&mishow);
@@ -1056,7 +1052,7 @@ static void smart_charge_workfunc(struct work_struct *work)
 
 	//smart bypass fcc limiter (mishow)
 	smart_charge_handle_bypass_chg(info);
-	smart_charge_handle_mishow_config(info);
+	handle_mishow_config(info);
 
 	schedule_delayed_work(&info->smart_charge_work, msecs_to_jiffies(5000));
 }

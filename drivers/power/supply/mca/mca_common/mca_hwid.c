@@ -44,10 +44,7 @@ const struct mca_hwid *mca_get_hwid_info(void)
 		phwid->build_adc = get_hw_build_adc();
 		phwid->hwid_value = get_hw_id_value();
 		phwid->product_name = product_name_get();
-		if (phwid->platform_version == HARDWARE_PROJECT_O10U &&
-		    phwid->country_version == CountryIndia)
-			phwid->country_version = CountryCN;
-		mca_log_err(
+		mca_log_info(
 			"platform_version: %d, country_version: %d, major_version: %d, minor_version: %d, build_version: %d",
 			phwid->platform_version, phwid->country_version,
 			phwid->major_version, phwid->minor_version,

@@ -5,6 +5,7 @@
 #include <linux/kdev_t.h>
 #include <linux/idr.h>
 #include <linux/thermal.h>
+#include "drivers/thermal/thermal_core.h"
 #include <linux/reboot.h>
 #include <linux/string.h>
 #include <linux/of.h>

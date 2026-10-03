@@ -1,0 +1,4 @@
+. "$(dirname "${BASH_SOURCE[0]}")/soc_repo_path.bzl"
+
+. ${KERNEL_DIR}/build.config.msm.canoe
+MSM_ARCH=myron

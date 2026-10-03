@@ -402,7 +402,7 @@ def define_single_android_build(
         if board_bc_extras:
             dist_data.append("{}_extra_bootconfig".format(stem))
 
-    dist_data.extend(define_techpack_modules(stem, name, variant))
+    dist_data.extend(define_techpack_modules(stem, name, variant, arch = module_lists_name))
 
     pkg_files(
         name = "{}_dist_files".format(stem),

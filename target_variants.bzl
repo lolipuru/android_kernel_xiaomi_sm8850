@@ -10,6 +10,7 @@ targets = [
     "lahaina",
     "malabar",
     "monaco",
+    "myron",
     "seraph",
     "shikra",
     "shikra_auto",

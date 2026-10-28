@@ -9,6 +9,8 @@
  *	Vinayak Holikatti <h.vinayak@samsung.com>
  */
 
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "ufs-private-core.h"
 #include <linux/async.h>
 #include <linux/devfreq.h>
 #include <linux/nls.h>
@@ -11169,7 +11171,8 @@ static struct scsi_driver ufs_dev_wlun_template = {
 	},
 };
 
-static int __init ufshcd_core_init(void)
+/* called from ufs-qcom's module init instead of a blacklisted initcall */
+int __init ufshcd_private_core_init(void)
 {
 	int ret;
 
@@ -11183,14 +11186,11 @@ static int __init ufshcd_core_init(void)
 	return ret;
 }
 
-static void __exit ufshcd_core_exit(void)
+void ufshcd_private_core_exit(void)
 {
 	ufs_debugfs_exit();
 	scsi_unregister_driver(&ufs_dev_wlun_template.gendrv);
 }
-
-module_init(ufshcd_core_init);
-module_exit(ufshcd_core_exit);
 
 MODULE_AUTHOR("Santosh Yaragnavi <santosh.sy@samsung.com>");
 MODULE_AUTHOR("Vinayak Holikatti <h.vinayak@samsung.com>");

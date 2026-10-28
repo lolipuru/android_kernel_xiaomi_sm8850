@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (C) 2018 Western Digital Corporation
 
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "ufs-private-core.h"
 #include <linux/err.h>
 #include <linux/string.h>
 #include <linux/bitfield.h>

@@ -7,6 +7,8 @@
  *	Can Guo <quic_cang@quicinc.com>
  */
 
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "ufs-private-core.h"
 #include <linux/unaligned.h>
 #include <linux/dma-mapping.h>
 #include <linux/module.h>

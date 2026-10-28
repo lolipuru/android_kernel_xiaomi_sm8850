@@ -5,6 +5,8 @@
  * Copyright (C) 2018 Western Digital Corporation
  */
 
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "ufs-private-core.h"
 #include <linux/bsg-lib.h>
 #include <linux/dma-mapping.h>
 #include <scsi/scsi.h>

@@ -40,6 +40,7 @@
 #include <ufs/ufshcd.h>
 #include <ufs/unipro.h>
 #include "ufs-qcom.h"
+#include "../core/ufs-private-core.h"
 #define CREATE_TRACE_POINTS
 #include "ufs-qcom-trace.h"
 #include <ufs/ufshci.h>
@@ -6637,7 +6638,28 @@ static struct platform_driver ufs_qcom_pltform = {
 		.acpi_match_table = ACPI_PTR(ufs_qcom_acpi_match),
 	},
 };
-module_platform_driver(ufs_qcom_pltform);
+static int __init ufs_qcom_module_init(void)
+{
+	int ret;
+
+	ret = ufshcd_private_core_init();
+	if (ret)
+		return ret;
+
+	ret = platform_driver_register(&ufs_qcom_pltform);
+	if (ret)
+		ufshcd_private_core_exit();
+
+	return ret;
+}
+module_init(ufs_qcom_module_init);
+
+static void __exit ufs_qcom_module_exit(void)
+{
+	platform_driver_unregister(&ufs_qcom_pltform);
+	ufshcd_private_core_exit();
+}
+module_exit(ufs_qcom_module_exit);
 
 MODULE_DESCRIPTION("Qualcomm UFS host controller driver");
 MODULE_LICENSE("GPL v2");

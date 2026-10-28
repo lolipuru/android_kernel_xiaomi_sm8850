@@ -8,6 +8,9 @@
  *	Vinayak Holikatti <h.vinayak@samsung.com>
  */
 
+
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "../core/ufs-private-core.h"
 #include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>

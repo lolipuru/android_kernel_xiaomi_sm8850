@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (C) 2020 Intel Corporation
 
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "ufs-private-core.h"
 #include <linux/debugfs.h>
 
 #include "ufs-debugfs.h"

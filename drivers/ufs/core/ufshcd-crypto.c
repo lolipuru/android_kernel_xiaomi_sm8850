@@ -3,6 +3,8 @@
  * Copyright 2019 Google LLC
  */
 
+#define UFS_PRIVATE_CORE_NOEXPORT
+#include "ufs-private-core.h"
 #include <ufs/ufshcd.h>
 #include "ufshcd-crypto.h"
 

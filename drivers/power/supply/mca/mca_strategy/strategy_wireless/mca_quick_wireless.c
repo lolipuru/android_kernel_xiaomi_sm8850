@@ -2442,16 +2442,6 @@ static int mca_wireless_quick_charge_parse_temp_para(
 				      &temp_info[row].temp_para.max_current))
 				goto error;
 			break;
-		case MCA_WLS_QUICK_CHG_TEMP_NROMAL_FV:
-			if (kstrtoint(tmp_string, 10,
-				      &temp_info[row].temp_para.normal_max_fv))
-				goto error;
-			break;
-		case MCA_WLS_QUICK_CHG_TEMP_FFC_FV:
-			if (kstrtoint(tmp_string, 10,
-				      &temp_info[row].temp_para.ffc_max_fv))
-				goto error;
-			break;
 		case MCA_WLS_QUICK_CHG_VOLT_PARA_NAME:
 			if (mca_wireless_quick_charge_parse_volt_para(
 				    node, tmp_string,
@@ -2502,6 +2492,18 @@ static int mca_wireless_quick_charge_parse_temp_para(
 		default:
 			break;
 		}
+	}
+	for (i = 0; i < batt_para_info->temp_para_size; i++) {
+		struct mca_wireless_quick_charge_volt_para_info *v;
+
+		v = &temp_info[i].volt_info;
+		if (v->volt_para_size)
+			temp_info[i].temp_para.normal_max_fv =
+				v->volt_para[v->volt_para_size - 1].voltage;
+		v = &temp_info[i].volt_ffc_info;
+		if (v->volt_para_size)
+			temp_info[i].temp_para.ffc_max_fv =
+				v->volt_para[v->volt_para_size - 1].voltage;
 	}
 	for (i = 0; i < batt_para_info->temp_para_size; i++)
 		mca_log_err("temp_para %d %d %d %d %d %d %d %d %d\n",

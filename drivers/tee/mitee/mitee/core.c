@@ -176,6 +176,7 @@ static int mitee_get_cpu_allows(struct device_node *node,
 	rc = of_property_read_u32_array(node, MITEE_CORE_ID, cpu, cpus_num);
 	if (rc) {
 		pr_err("read dts failed(%d): %s\n", rc, MITEE_CORE_ID);
+		kfree(cpu);
 		return rc;
 	}
 
@@ -185,6 +186,7 @@ static int mitee_get_cpu_allows(struct device_node *node,
 
 		cpumask_set_cpu(cpu[i], cpus_allowed);
 	}
+	kfree(cpu);
 
 	if (bind_core_mask != -1) {
 		cpumask_clear(cpus_allowed);
@@ -223,11 +225,10 @@ static int mitee_parse_dts(struct optee *optee)
 		return rc;
 	}
 
-	rc = of_property_read_u32(dev_node, MITEE_WORKER_COUNT, &optee->workers_count);
-	if (rc) {
-		pr_err("read dts failed(%d): %s\n", rc, MITEE_WORKER_COUNT);
-		return rc;
-	}
+	/* a single worker unless the platform asks for more */
+	if (of_property_read_u32(dev_node, MITEE_WORKER_COUNT,
+				 &optee->workers_count) || !optee->workers_count)
+		optee->workers_count = 1;
 
 	/* check if user has manually changed workers_count */
 	if (workers_count != -1) {

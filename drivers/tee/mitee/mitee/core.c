@@ -603,13 +603,10 @@ static int optee_to_msg_param(struct optee *optee,
 		case TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT:
 		case TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT:
 		case TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT:
-			if (tee_shm_is_registered(p->u.memref.shm)) {
-				if (optee->comm_ops->id == ARM_FFA)
-					rc = optee->comm_ops->to_msg_param(mp,
-									   p);
-			} else {
+			if (tee_shm_is_registered(p->u.memref.shm))
+				rc = optee->comm_ops->to_msg_param(mp, p);
+			else
 				rc = to_msg_param_tmp_mem(mp, p);
-			}
 
 			if (rc) {
 				pr_err("attr: %#llx failed: %d!\n",

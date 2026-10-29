@@ -131,13 +131,7 @@ union common_args {
 	} out;
 };
 
-enum comm_protocal {
-	ARM_FFA,
-	QCOM_QMI,
-};
-
 struct mitee_comm_ops {
-	enum comm_protocal id;
 	int (*init)(void);
 	void (*deinit)(void);
 	int (*call)(union common_args *args);

@@ -1140,7 +1140,6 @@ static void mitee_msgq_unregister(void)
 }
 
 const struct mitee_comm_ops mitee_msgq_comm_ops = {
-	.id = QCOM_QMI,
 	.init = mitee_msgq_register,
 	.deinit = mitee_msgq_unregister,
 	.call = mitee_msgq_call,

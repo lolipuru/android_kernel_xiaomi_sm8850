@@ -125,6 +125,8 @@ struct qcom_subpmic {
 	struct delayed_work update_usb_type_work;
 	struct work_struct notify_change_work;
 	struct delayed_work sync_cfg_work;
+	struct delayed_work boot_resync_work;
+	int boot_resync_left;
 
 	struct notifier_block ship_mode_nb;
 	struct notifier_block shutdown_nb;
@@ -936,6 +938,18 @@ retry:
 				   msecs_to_jiffies(250));
 }
 
+static void qcom_subpmic_boot_resync_work(struct work_struct *work)
+{
+	struct qcom_subpmic *sc = container_of(to_delayed_work(work),
+					       struct qcom_subpmic,
+					       boot_resync_work);
+
+	queue_delayed_work(system_wq, &sc->update_usb_type_work, 0);
+	if (--sc->boot_resync_left > 0)
+		queue_delayed_work(system_wq, &sc->boot_resync_work,
+				   msecs_to_jiffies(500));
+}
+
 static void qcom_subpmic_notify_change_work(struct work_struct *work)
 {
 	struct qcom_subpmic *sc =
@@ -1233,6 +1247,7 @@ static int qcom_subpmic_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&sc->update_usb_type_work,
 			  qcom_subpmic_update_usb_type_work);
 	INIT_DELAYED_WORK(&sc->sync_cfg_work, qcom_subpmic_sync_cfg_work);
+	INIT_DELAYED_WORK(&sc->boot_resync_work, qcom_subpmic_boot_resync_work);
 	INIT_WORK(&sc->notify_change_work, qcom_subpmic_notify_change_work);
 
 	sc->ship_mode_nb.notifier_call = qcom_subpmic_ship_mode;
@@ -1273,6 +1288,9 @@ static int qcom_subpmic_probe(struct platform_device *pdev)
 
 	queue_delayed_work(system_wq, &sc->update_usb_type_work, 0);
 	queue_delayed_work(system_wq, &sc->sync_cfg_work, msecs_to_jiffies(25));
+	sc->boot_resync_left = 30;
+	queue_delayed_work(system_wq, &sc->boot_resync_work,
+			   msecs_to_jiffies(500));
 	mca_log_err("probe ok\n");
 	return 0;
 

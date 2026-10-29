@@ -30,11 +30,11 @@
  * linux side consumer thread.
  */
 struct log_rb {
-	volatile uint64_t alloc; //tee runtime log
-	volatile uint64_t put;
+	volatile uint32_t alloc; //tee runtime log
+	volatile uint32_t put;
 	uint32_t sz;
-	volatile uint64_t b_alloc; //tee bootup log
-	volatile uint64_t b_put;
+	volatile uint32_t b_alloc; //tee bootup log
+	volatile uint32_t b_put;
 	uint32_t b_sz;
 	volatile char old_aeskey[KEY_LENGTH];
 	volatile char aeskey[KEY_LENGTH];
@@ -42,6 +42,9 @@ struct log_rb {
 	bool rt_log_init; //if runtime log
 	volatile char data[];
 } __packed;
+
+/* the TEE writes this header, the log text starts right after it */
+static_assert(offsetof(struct log_rb, data) == 0x3cb);
 
 struct mitee_memlog_state {
 	struct device *dev;
@@ -55,8 +58,8 @@ struct mitee_memlog_state {
 	 */
 	spinlock_t lock;
 	struct log_rb *log;
-	uint64_t get;
-	uint64_t b_get;
+	uint32_t get;
+	uint32_t b_get;
 
 	struct page *log_pages;
 

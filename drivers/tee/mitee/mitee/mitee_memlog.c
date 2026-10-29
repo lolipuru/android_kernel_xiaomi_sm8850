@@ -45,7 +45,7 @@
 #define SET_KEY_FILE "/data/vendor/mitee/key.log"
 static bool g_read_b_buf;
 
-static int log_read_line_internal(struct mitee_memlog_state *s, uint64_t put, uint64_t get,
+static int log_read_line_internal(struct mitee_memlog_state *s, uint32_t put, uint32_t get,
 					uint32_t rb_start, uint32_t rb_size)
 {
 	struct log_rb *log = s->log;
@@ -77,14 +77,14 @@ done:
 	return (i + j);
 }
 
-static int log_read_line(struct mitee_memlog_state *s, uint64_t put, uint64_t get)
+static int log_read_line(struct mitee_memlog_state *s, uint32_t put, uint32_t get)
 {
 	struct log_rb *log = s->log;
 
 	return log_read_line_internal(s, put, get, 0, log->sz);
 }
 
-static int log_read_b_line(struct mitee_memlog_state *s, uint64_t put, uint64_t get)
+static int log_read_b_line(struct mitee_memlog_state *s, uint32_t put, uint32_t get)
 {
 	struct log_rb *log = s->log;
 
@@ -95,7 +95,7 @@ static int log_read_b_line(struct mitee_memlog_state *s, uint64_t put, uint64_t 
 static void mitee_dump_logs(struct mitee_memlog_state *s)
 {
 	struct log_rb *log = s->log;
-	uint64_t get, put, alloc;
+	uint32_t get, put, alloc;
 	int read_chars;
 
 	/*
@@ -173,7 +173,7 @@ static int mitee_memlog_notify(struct notifier_block *nb,
 static int is_buf_empty(struct mitee_memlog_state *s)
 {
 	struct log_rb *log = s->log;
-	uint64_t get, put;
+	uint32_t get, put;
 
 	get = s->get;
 	put = log->put;
@@ -183,7 +183,7 @@ static int is_buf_empty(struct mitee_memlog_state *s)
 static int is_b_buf_empty(struct mitee_memlog_state *s)
 {
 	struct log_rb *log = s->log;
-	uint64_t get, put;
+	uint32_t get, put;
 
 	get = s->b_get;
 	put = log->b_put;
@@ -194,7 +194,7 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 				size_t size)
 {
 	struct log_rb *log = s->log;
-	uint64_t get, put, alloc;
+	uint32_t get, put, alloc;
 	int read_chars = 0, copy_chars = 0, tbuf_size, outbuf_size;
 	char *psrc = NULL;
 
@@ -212,21 +212,13 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 		rmb();
 		alloc = log->b_alloc;
 
-		/* check if the value of alloc(and put) is overflow, typically get value
-		 * is a huge number, while alloc value is very small
-		 */
-		if (get > alloc) {
-			pr_notice("mitee: bootup log overflow, alloc = %llx, get = %llx",
-				alloc, get);
-			get = 0;
-		}
-
+		/* the counters wrap, compare distances rather than positions */
 		if (alloc - get > log->b_sz) {
-			pr_notice("mitee: bootup log overflow, lose some msg.");
+			pr_notice_ratelimited("mitee: bootup log overflow, lose some msg.");
 			get = alloc - log->b_sz;
 		}
 
-		if (get > put)
+		if (put - get > log->b_sz)
 			return -EFAULT;
 
 		if (is_b_buf_empty(s)) {
@@ -279,21 +271,13 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 		rmb();
 		alloc = log->alloc;
 
-		/* check if the value of alloc(and put) is overflow, typically get value
-		 * is a huge number, while alloc value is very small
-		 */
-		if (get > alloc) {
-			pr_notice("mitee: runtime log overflow, alloc = %llx, get = %llx",
-				alloc, get);
-			get = 0;
-		}
-
+		/* the counters wrap, compare distances rather than positions */
 		if (alloc - get > log->sz) {
-			pr_notice("mitee: runtime log overflow, lose some msg.");
+			pr_notice_ratelimited("mitee: runtime log overflow, lose some msg.");
 			get = alloc - log->sz;
 		}
 
-		if (get > put)
+		if (put - get > log->sz)
 			return -EFAULT;
 
 		if (is_buf_empty(s))
@@ -589,7 +573,7 @@ int mitee_memlog_remove(struct platform_device *pdev)
 	if (!s)
 		return 0;
 
-	dev_dbg(&pdev->dev, "%s get = %llx\n", __func__, s->get);
+	dev_dbg(&pdev->dev, "%s get = %x\n", __func__, s->get);
 	proc_remove(s->proc);
 	proc_remove(s->proc_key);
 	atomic_notifier_chain_unregister(&panic_notifier_list,

@@ -47,11 +47,6 @@
 struct mutex tee_mutex;
 static struct optee *optee_svc;
 
-#ifdef ENABLE_CMDLINE_SUPPORT
-static bool mitee_disable;
-module_param(mitee_disable, bool, 0);
-#endif
-
 static ulong  bind_core_mask = -1;
 static uint   workers_count = -1;
 module_param(bind_core_mask, ulong, 0);
@@ -845,15 +840,6 @@ static int mitee_core_init(void)
 	int cnt = 0;
 
 	pr_info("initializing driver\n");
-
-#ifdef ENABLE_CMDLINE_SUPPORT
-	if (mitee_disable) {
-		pr_info("mitee_disable = true\n");
-		return 0;
-	}
-
-	pr_info("mitee_disable is false\n");
-#endif
 
 	/*
 	 * The kernel may have crashed at the same time that all available

@@ -158,6 +158,8 @@ source "$(KCONFIG_EXT_PREFIX)drivers/input/fingerprint/mi_fp/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/xiaomi/Kconfig"
 
+source "$(KCONFIG_EXT_PREFIX)drivers/tee/mitee/Kconfig"
+
 source "$(KCONFIG_EXT_PREFIX)drivers/ir-spi/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/thermal/xiaomi/Kconfig"

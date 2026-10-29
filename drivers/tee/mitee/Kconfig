@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Xiaomi MiTEE
+#
+
+config MITEE
+	tristate "Xiaomi MiTEE driver"
+	depends on GH_MSGQ && GH_RM_DRV && QCOM_SCM && QCOM_SECURE_BUFFER
+	default n
+	help
+	  Driver for the Xiaomi MiTEE trusted execution environment. MiTEE
+	  runs in a Gunyah VM and is reached over a Gunyah message queue.
+	  It provides /dev/tee0 and /dev/teepriv0 for tee-supplicant and
+	  its clients.
+
+config MITEE_BENCHMARK
+	bool "MiTEE call benchmarking"
+	depends on MITEE
+	default n
+	help
+	  Record PMU cycle counter timestamps for calls into MiTEE in a
+	  buffer shared with the TEE.

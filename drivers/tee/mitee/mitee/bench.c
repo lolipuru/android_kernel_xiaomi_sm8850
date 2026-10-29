@@ -45,7 +45,7 @@
 struct optee_ts_global *optee_bench_ts_global;
 struct rw_semaphore optee_bench_ts_rwsem;
 
-#ifdef CONFIG_XRING_OPTEE_BENCHMARK
+#ifdef CONFIG_MITEE_BENCHMARK
 static inline u64 armv8pmu_pmcr_read(void)
 {
 	u64 val = 0;
@@ -162,4 +162,4 @@ void optee_bm_timestamp(void)
 
 	put_cpu();
 }
-#endif  /* CONFIG_XRING_OPTEE_BENCHMARK */
+#endif  /* CONFIG_MITEE_BENCHMARK */

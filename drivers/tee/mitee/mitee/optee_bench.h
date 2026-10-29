@@ -58,7 +58,7 @@ struct optee_ts_global {
 extern struct optee_ts_global *optee_bench_ts_global;
 extern struct rw_semaphore optee_bench_ts_rwsem;
 
-#ifdef CONFIG_XRING_OPTEE_BENCHMARK
+#ifdef CONFIG_MITEE_BENCHMARK
 void optee_bm_enable(void);
 void optee_bm_disable(void);
 void optee_bm_timestamp(void);
@@ -72,6 +72,6 @@ static inline void optee_bm_disable(void)
 static inline void optee_bm_timestamp(void)
 {
 }
-#endif  /* CONFIG_XRING_OPTEE_BENCHMARK */
+#endif  /* CONFIG_MITEE_BENCHMARK */
 
 #endif /* _OPTEE_BENCH_H */

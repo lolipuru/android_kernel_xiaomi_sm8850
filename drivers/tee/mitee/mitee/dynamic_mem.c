@@ -138,7 +138,7 @@ int mitee_alloc_memory_sgt(uint32_t mem_size, struct sg_table **out_sgt)
 
 	INIT_LIST_HEAD(&page_frag.page_node);
 
-	for (index = MAX_ORDER - 1; index >= 0; index--) {
+	for (index = MAX_PAGE_ORDER - 1; index >= 0; index--) {
 		while (left_size >= (1 << index) * PAGE_SIZE) {
 			pages = alloc_pages(GFP_KERNEL, index);
 			if (!pages) {

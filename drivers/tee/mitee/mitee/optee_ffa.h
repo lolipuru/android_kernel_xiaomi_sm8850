@@ -11,6 +11,8 @@
 #ifndef __OPTEE_FFA_H
 #define __OPTEE_FFA_H
 
+#include <linux/bits.h>
+
 /*
  * Normal world sends requests with FFA_MSG_SEND_DIRECT_REQ and
  * responses are returned with FFA_MSG_SEND_DIRECT_RESP for normal

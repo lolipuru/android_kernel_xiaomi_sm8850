@@ -173,7 +173,6 @@ err_dev_put:
 	tee_device_put(teedev);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(tee_shm_alloc);
 
 /**
  * tee_shm_alloc_kernel_buf() - Allocate shared memory for kernel buffer
@@ -191,7 +190,6 @@ struct tee_shm *tee_shm_alloc_kernel_buf(struct tee_context *ctx, size_t size)
 {
 	return tee_shm_alloc(ctx, size, TEE_SHM_MAPPED);
 }
-EXPORT_SYMBOL_GPL(tee_shm_alloc_kernel_buf);
 
 struct tee_shm *tee_shm_register(struct tee_context *ctx, unsigned long addr,
 				 size_t length, u32 flags)
@@ -308,7 +306,6 @@ err:
 	tee_device_put(teedev);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(tee_shm_register);
 
 /**
  * tee_shm_register_kernel_buf() - Register kernel memory to be shared with
@@ -327,7 +324,6 @@ struct tee_shm *tee_shm_register_kernel_buf(struct tee_context *ctx,
 
 	return tee_shm_register(ctx, (unsigned long)addr, length, flags);
 }
-EXPORT_SYMBOL_GPL(tee_shm_register_kernel_buf);
 
 static int tee_shm_fop_release(struct inode *inode, struct file *filp)
 {
@@ -394,7 +390,6 @@ void tee_shm_free(struct tee_shm *shm)
 {
 	tee_shm_put(shm);
 }
-EXPORT_SYMBOL_GPL(tee_shm_free);
 
 /**
  * tee_shm_va2pa() - Get physical address of a virtual address
@@ -422,7 +417,6 @@ int tee_shm_va2pa(struct tee_shm *shm, void *va, phys_addr_t *pa)
 	return tee_shm_get_pa(
 		shm, (unsigned long)va - (unsigned long)shm->kaddr, pa);
 }
-EXPORT_SYMBOL_GPL(tee_shm_va2pa);
 
 /**
  * tee_shm_pa2va() - Get virtual address of a physical address
@@ -458,7 +452,6 @@ int tee_shm_pa2va(struct tee_shm *shm, phys_addr_t pa, void **va)
 	}
 	return 0;
 }
-EXPORT_SYMBOL_GPL(tee_shm_pa2va);
 
 /**
  * tee_shm_get_va() - Get virtual address of a shared memory plus an offset
@@ -479,7 +472,6 @@ void *tee_shm_get_va(struct tee_shm *shm, size_t offs)
 	}
 	return (char *)shm->kaddr + offs;
 }
-EXPORT_SYMBOL_GPL(tee_shm_get_va);
 
 /**
  * tee_shm_get_pa() - Get physical address of a shared memory plus an offset
@@ -499,7 +491,6 @@ int tee_shm_get_pa(struct tee_shm *shm, size_t offs, phys_addr_t *pa)
 		*pa = shm->paddr + offs;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(tee_shm_get_pa);
 
 /**
  * tee_shm_get_from_id() - Find shared memory object and increase reference
@@ -531,7 +522,6 @@ struct tee_shm *tee_shm_get_from_id(struct tee_context *ctx, int id)
 	mutex_unlock(&teedev->mutex);
 	return shm;
 }
-EXPORT_SYMBOL_GPL(tee_shm_get_from_id);
 
 /**
  * tee_shm_put() - Decrease reference count on a shared memory handle
@@ -559,4 +549,3 @@ void tee_shm_put(struct tee_shm *shm)
 	if (do_release)
 		tee_shm_release(teedev, shm);
 }
-EXPORT_SYMBOL_GPL(tee_shm_put);

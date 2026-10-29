@@ -16,6 +16,8 @@
 #ifndef _MITEE_SMC_NOTIFY_H_
 #define _MITEE_SMC_NOTIFY_H_
 
+#include <linux/types.h>
+
 #define MITEE_NOTIFICATION_TYPE_CONNECT     0x01
 #define MITEE_NOTIFICATION_TYPE_SIGNAL      0x02
 #define MITEE_NOTIFICATION_TYPE_DATAFRAG    0x03

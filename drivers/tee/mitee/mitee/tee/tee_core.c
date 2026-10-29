@@ -75,7 +75,6 @@ err:
 	tee_device_put(teedev);
 	return ERR_PTR(rc);
 }
-EXPORT_SYMBOL_GPL(teedev_open);
 
 void teedev_ctx_get(struct tee_context *ctx)
 {
@@ -109,7 +108,6 @@ void teedev_close_context(struct tee_context *ctx)
 	teedev_ctx_put(ctx);
 	tee_device_put(teedev);
 }
-EXPORT_SYMBOL_GPL(teedev_close_context);
 
 static int tee_open(struct inode *inode, struct file *filp)
 {
@@ -287,7 +285,6 @@ out_free_name:
 
 	return rc;
 }
-EXPORT_SYMBOL_GPL(tee_session_calc_client_uuid);
 
 static int tee_ioctl_version(struct tee_context *ctx,
 			     struct tee_ioctl_version_data __user *uvers)
@@ -1143,7 +1140,6 @@ err:
 	kfree(teedev);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(tee_device_alloc);
 
 static ssize_t implementation_id_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
@@ -1195,7 +1191,6 @@ int tee_device_register(struct tee_device *teedev)
 	teedev->flags |= TEE_DEVICE_FLAG_REGISTERED;
 	return 0;
 }
-EXPORT_SYMBOL_GPL(tee_device_register);
 
 void tee_device_put(struct tee_device *teedev)
 {
@@ -1251,7 +1246,6 @@ void tee_device_unregister(struct tee_device *teedev)
 
 	put_device(&teedev->dev);
 }
-EXPORT_SYMBOL_GPL(tee_device_unregister);
 
 /**
  * tee_get_drvdata() - Return driver_data pointer
@@ -1262,7 +1256,6 @@ void *tee_get_drvdata(struct tee_device *teedev)
 {
 	return dev_get_drvdata(&teedev->dev);
 }
-EXPORT_SYMBOL_GPL(tee_get_drvdata);
 
 struct match_dev_data {
 	struct tee_ioctl_version_data *vers;
@@ -1319,20 +1312,17 @@ struct tee_context *tee_client_open_context(
 
 	return ctx;
 }
-EXPORT_SYMBOL_GPL(tee_client_open_context);
 
 void tee_client_close_context(struct tee_context *ctx)
 {
 	teedev_close_context(ctx);
 }
-EXPORT_SYMBOL_GPL(tee_client_close_context);
 
 void tee_client_get_version(struct tee_context *ctx,
 			    struct tee_ioctl_version_data *vers)
 {
 	ctx->teedev->desc->ops->get_version(ctx->teedev, vers);
 }
-EXPORT_SYMBOL_GPL(tee_client_get_version);
 
 int tee_client_open_session(struct tee_context *ctx,
 			    struct tee_ioctl_open_session_arg *arg,
@@ -1342,7 +1332,6 @@ int tee_client_open_session(struct tee_context *ctx,
 		return -EINVAL;
 	return ctx->teedev->desc->ops->open_session(ctx, arg, param);
 }
-EXPORT_SYMBOL_GPL(tee_client_open_session);
 
 int tee_client_close_session(struct tee_context *ctx, u32 session)
 {
@@ -1350,7 +1339,6 @@ int tee_client_close_session(struct tee_context *ctx, u32 session)
 		return -EINVAL;
 	return ctx->teedev->desc->ops->close_session(ctx, session);
 }
-EXPORT_SYMBOL_GPL(tee_client_close_session);
 
 int tee_client_invoke_func(struct tee_context *ctx,
 			   struct tee_ioctl_invoke_arg *arg,
@@ -1360,7 +1348,6 @@ int tee_client_invoke_func(struct tee_context *ctx,
 		return -EINVAL;
 	return ctx->teedev->desc->ops->invoke_func(ctx, arg, param);
 }
-EXPORT_SYMBOL_GPL(tee_client_invoke_func);
 
 int tee_client_cancel_req(struct tee_context *ctx,
 			  struct tee_ioctl_cancel_arg *arg)
@@ -1372,7 +1359,7 @@ int tee_client_cancel_req(struct tee_context *ctx,
 }
 
 static int tee_client_device_match(struct device *dev,
-				   struct device_driver *drv)
+				   const struct device_driver *drv)
 {
 	const struct tee_client_device_id *id_table;
 	struct tee_client_device *tee_device;

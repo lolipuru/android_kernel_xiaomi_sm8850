@@ -426,7 +426,6 @@ void mitee_rpc_register_callback(uint32_t module_id, uint32_t cmd,
 	list_add_tail(&new_item->link, &queue->item);
 	mutex_unlock(&queue->mut);
 }
-EXPORT_SYMBOL(mitee_rpc_register_callback);
 
 static int optee_msg_arg_to_callback_para(struct optee_msg_arg *arg, struct optee_msg_param_value **value,
 					  void **va, uint32_t *size)

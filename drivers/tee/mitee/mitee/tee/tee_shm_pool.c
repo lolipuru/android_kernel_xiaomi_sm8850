@@ -111,7 +111,6 @@ err_free_priv_mgr:
 
 	return rc;
 }
-EXPORT_SYMBOL_GPL(tee_shm_pool_alloc_res_mem);
 
 struct tee_shm_pool_mgr *tee_shm_pool_mgr_alloc_res_mem(unsigned long vaddr,
 							phys_addr_t paddr,
@@ -157,7 +156,6 @@ err:
 
 	return ERR_PTR(rc);
 }
-EXPORT_SYMBOL_GPL(tee_shm_pool_mgr_alloc_res_mem);
 
 static bool check_mgr_ops(struct tee_shm_pool_mgr *mgr)
 {
@@ -184,7 +182,6 @@ struct tee_shm_pool *tee_shm_pool_alloc(struct tee_shm_pool_mgr *priv_mgr,
 
 	return pool;
 }
-EXPORT_SYMBOL_GPL(tee_shm_pool_alloc);
 
 /**
  * tee_shm_pool_free() - Free a shared memory pool
@@ -201,4 +198,3 @@ void tee_shm_pool_free(struct tee_shm_pool *pool)
 		tee_shm_pool_mgr_destroy(pool->dma_buf_mgr);
 	kfree(pool);
 }
-EXPORT_SYMBOL_GPL(tee_shm_pool_free);

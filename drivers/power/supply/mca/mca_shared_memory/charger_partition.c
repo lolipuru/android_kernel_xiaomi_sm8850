@@ -50,9 +50,6 @@
 #include <hwid.h>
 #include "drivers/scsi/sd.h"
 
-#define CHARGER_PART_PLATFORM_V9 9
-#define CHARGER_PART_NUMBER_V9 25
-#define CHARGER_PART_NUMBER_DEFAULT 22
 
 #ifndef MCA_LOG_TAG
 #define MCA_LOG_TAG "charger_partition"
@@ -845,8 +842,8 @@ static bool get_charger_partition_info(void)
 {
 	struct scsi_disk *sdkp = NULL;
 	struct scsi_device *sdev = charger_partition->sdev;
-	int part_number = charger_partition->part_info_part_number;
 	struct block_device *part;
+	unsigned long part_number;
 
 	if (!sdev->sdev_gendev.driver_data) {
 		mca_log_err("scsi disk is null\n");
@@ -860,35 +857,30 @@ static bool get_charger_partition_info(void)
 	}
 
 	charger_partition->part_info_part_name = sdkp->disk->disk_name;
-	mca_log_err("partion: %s part_number:%d\n",
-		    charger_partition->part_info_part_name, part_number);
+	mca_log_err("partion: %s, searching for charger partition\n",
+		    charger_partition->part_info_part_name);
 
-	part = xa_load(&sdkp->disk->part_tbl, part_number);
-	if (!part) {
-		mca_log_err("device is null\n");
-		return false;
+	xa_for_each_start(&sdkp->disk->part_tbl, part_number, part, 1) {
+		if (!part->bd_meta_info)
+			continue;
+		if (!strncmp(part->bd_meta_info->volname, "charger",
+			     sizeof("charger")))
+			break;
+		mca_log_debug("part_number:%lu volname:%s is not charger partition, skip\n",
+			      part_number, part->bd_meta_info->volname);
 	}
+	if (!part)
+		return false;
 
-	if (!part->bd_meta_info) {
-		mca_log_err("part_num %d has no meta_info, skip\n",
-			    part_number);
-		return false;
-	}
-
-	if (strncmp(part->bd_meta_info->volname, "charger",
-		    sizeof("charger"))) {
-		mca_log_err("[charger] this is not lun0\n");
-		return false;
-	}
+	charger_partition->part_info_part_number = part_number;
 
 	part_info.part_start =
 		part->bd_start_sect * PART_SECTOR_SIZE / PART_BLOCK_SIZE;
 	part_info.part_size =
 		bdev_nr_sectors(part) * PART_SECTOR_SIZE / PART_BLOCK_SIZE;
 
-	mca_log_err("partion: %s start %llu(block) size %llu(block)\n",
-		    charger_partition->part_info_part_name,
-		    part_info.part_start, part_info.part_size);
+	mca_log_err("charger partition found: part_number:%lu start %llu(block) size %llu(block)\n",
+		    part_number, part_info.part_start, part_info.part_size);
 	return true;
 }
 
@@ -1191,16 +1183,10 @@ static void charger_partition_prepare(void)
 
 static void charger_partition_work(struct work_struct *work)
 {
-	const struct mca_hwid *hwid = mca_get_hwid_info();
 	int lun = 0;
 	static int retry;
 
 	mca_log_err("get hw_country_ver: %u\n", get_hw_country_version());
-	charger_partition->part_info_part_number =
-		(hwid && hwid->platform_version == CHARGER_PART_PLATFORM_V9) ?
-			CHARGER_PART_NUMBER_V9 :
-			CHARGER_PART_NUMBER_DEFAULT;
-
 	// 1. find charger partition
 	for (lun = 0; lun < 6; lun++) {
 		/*find charger partition scsi device*/

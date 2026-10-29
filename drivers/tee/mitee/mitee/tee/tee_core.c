@@ -316,13 +316,15 @@ static int tee_ioctl_shm_alloc(struct tee_context *ctx,
 		return -EFAULT;
 	}
 
-	/* Currently no input flags are supported */
-	if (data.flags) {
+	if (data.flags == TEE_IOCTL_SHM_ALLOC_VMALLOC) {
+		shm = tee_shm_alloc_vmalloc(ctx, data.size);
+	} else if (data.flags) {
 		pr_err("flag is error\n");
 		return -EINVAL;
+	} else {
+		shm = tee_shm_alloc(ctx, data.size,
+				    TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
 	}
-
-	shm = tee_shm_alloc(ctx, data.size, TEE_SHM_MAPPED | TEE_SHM_DMA_BUF);
 	if (IS_ERR(shm)) {
 		pr_err("shm is error\n");
 		return PTR_ERR(shm);

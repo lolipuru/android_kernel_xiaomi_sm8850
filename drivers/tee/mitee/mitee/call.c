@@ -4,15 +4,20 @@
  */
 #define pr_fmt(fmt) KBUILD_MODNAME ": [%s %d] " fmt, __func__, __LINE__
 
+#include <linux/dcache.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/errno.h>
+#include <linux/fs.h>
 #include <linux/mm.h>
+#include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/thread_info.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/string.h>
+#include <linux/uuid.h>
 
 #include <tee_drv.h>
 #include "optee_bench.h"
@@ -20,9 +25,6 @@
 #include "tee_bench.h"
 
 #define MAX_TPATH_LEN				512
-#define MAX_CA_PATH				128
-#define UUID_MAX_STR_LEN			255U
-#define CLIENT_VAL_LEN				4U
 
 void optee_cq_wait_init(struct optee_call_queue *cq,
 			struct optee_call_waiter *w)
@@ -152,160 +154,60 @@ struct tee_shm *optee_get_msg_arg(struct tee_context *ctx, size_t num_params,
 }
 #endif
 
-static int get_ca_path(char *ca_path, size_t *size)
+/* only clients run from these directories may open sessions */
+static const char * const mitee_ca_dirs[] = {
+	"/vendor/bin",
+	"/odm/bin",
+	"/apex/com.google.android.widevine/bin/hw",
+};
+
+static bool ca_path_in_dir(const char *path, const char *dir)
 {
-	const char *kernel_path = "kernel";
-	char *path = NULL;
-	char tpath[MAX_TPATH_LEN] = { 0 };
+	size_t len = strlen(dir);
 
-	if (current->active_mm == NULL) {
-		pr_err("current->active_mm is NULL\n");
-		return -EFAULT;
-	}
-
-	if (current->active_mm->exe_file == NULL) {
-		memcpy(ca_path, kernel_path, strlen(kernel_path) + 1);
-		*size = strlen(kernel_path);
-		goto end;
-	}
-
-	path = d_path(&(current->active_mm->exe_file->f_path), tpath, MAX_TPATH_LEN);
-	if (IS_ERR(path)) {
-		pr_err("get ca path error\n");
-		return -EINVAL;
-	}
-	if (strlen(path) > MAX_CA_PATH) {
-		pr_err("ca path is to long %zu\n", strlen(path));
-		return -EINVAL;
-	}
-
-	memcpy(ca_path, path, strlen(path) + 1);
-	*size = strlen(path);
-
-end:
-	pr_info("get ca path success: %s\n", ca_path);
-	return 0;
+	return !strncmp(path, dir, len) && (path[len] == '\0' || path[len] == '/');
 }
 
-static int ca_path_to_msg_param(struct tee_context *ctx,
-								struct tee_shm **ca_shm,
-								struct optee_msg_arg *msg_arg)
+static int optee_auth_ca(void)
 {
-	u8 *temp_buf = NULL;
-	phys_addr_t pa_addr = 0;
-	int rc = 0;
-	char ca_path[MAX_CA_PATH];
-	size_t ca_path_size = sizeof(ca_path);
+	char tpath[MAX_TPATH_LEN];
+	struct mm_struct *mm = current->mm;
+	struct file *exe_file;
+	char *path;
+	int i, rc;
 
-	if (get_ca_path(ca_path, &ca_path_size) != 0) {
-		pr_err("get ca name error\n");
-		return -EINVAL;
+	/* in-kernel clients have no executable */
+	if (!mm)
+		return 0;
+
+	rcu_read_lock();
+	exe_file = rcu_dereference(mm->exe_file);
+	path = exe_file ? d_path(&exe_file->f_path, tpath, sizeof(tpath)) :
+			  NULL;
+	rcu_read_unlock();
+	if (!path)
+		return 0;
+	if (IS_ERR(path))
+		return PTR_ERR(path);
+
+	rc = -EACCES;
+	for (i = 0; i < ARRAY_SIZE(mitee_ca_dirs); i++) {
+		if (ca_path_in_dir(path, mitee_ca_dirs[i])) {
+			rc = 0;
+			break;
+		}
 	}
+	if (rc)
+		pr_err("fail to auth ca path: %s\n", path);
 
-	*ca_shm = tee_shm_alloc(ctx, ca_path_size, TEE_SHM_MAPPED);
-	if (IS_ERR(*ca_shm)) {
-		pr_err("tee shm alloc error\n");
-		return -EINVAL;
-	}
-
-	temp_buf = tee_shm_get_va(*ca_shm, 0);
-	rc       = tee_shm_get_pa(*ca_shm, 0, &pa_addr);
-	if (IS_ERR(temp_buf) || (rc != 0)) {
-		pr_err("tee shm get va or pa fail");
-		rc = -EINVAL;
-		goto out;
-	}
-
-	memcpy(temp_buf, ca_path, ca_path_size);
-
-	msg_arg->params[1].u.tmem.shm_ref = (unsigned long)(*ca_shm);
-	msg_arg->params[1].u.tmem.size = ca_path_size;
-	msg_arg->params[1].u.tmem.buf_ptr = pa_addr;
-	return 0;
-
-out:
-	tee_shm_free(*ca_shm);
 	return rc;
 }
 
-static int get_uuid_str(const uint8_t *uuid, const uuid_t client_uuid,
-						uint32_t clnt_login, char *name, uint32_t *name_len)
+static int metadata_to_msg_param(const struct tee_ioctl_open_session_arg *arg,
+				 struct optee_msg_arg *msg_arg)
 {
-	char clnt_buf[CLIENT_VAL_LEN];
-
-	/* name fill with two uuid */
-	if (*name_len < (2 * sizeof(uuid_t) + CLIENT_VAL_LEN)) {
-		pr_err("name len is to short");
-		return -EINVAL;
-	}
-
-	memcpy(name, uuid, sizeof(uuid_t));
-	memcpy(name + sizeof(uuid_t), (const void *)&client_uuid, sizeof(client_uuid));
-
-	clnt_buf[0] = (clnt_login & 0xff000000) >> 24;
-	clnt_buf[1] = (clnt_login & 0x00ff0000) >> 16;
-	clnt_buf[2] = (clnt_login & 0x0000ff00) >> 8;
-	clnt_buf[3] = (clnt_login & 0x000000ff);
-
-	memcpy(name + 2 * sizeof(uuid_t), clnt_buf, sizeof(clnt_buf));
-	*name_len = 2 * sizeof(uuid_t) + CLIENT_VAL_LEN;
-
-	return 0;
-}
-
-static int uuid_to_msg_param(struct tee_context *ctx,
-							 struct tee_shm **shm,
-							 const uint8_t *uuid,
-							 const uuid_t client_uuid,
-							 uint32_t clnt_login,
-							 struct optee_msg_arg *msg_arg)
-{
-	u8 *temp_buf = NULL;
-	phys_addr_t pa_addr = 0;
-	int rc = 0;
-	/* add uuid + client uuid */
-	char uuid_buf[UUID_MAX_STR_LEN] = { 0 };
-	uint32_t uuid_buf_size = sizeof(uuid_buf);
-
-	*shm = tee_shm_alloc(ctx, uuid_buf_size, TEE_SHM_MAPPED);
-	if (IS_ERR(*shm)) {
-		pr_err("tee shm alloc error\n");
-		return -EINVAL;
-	}
-
-	temp_buf = tee_shm_get_va(*shm, 0);
-	rc	   = tee_shm_get_pa(*shm, 0, &pa_addr);
-	if (IS_ERR(temp_buf) || (rc != 0)) {
-		pr_err("tee shm get va or pa fail");
-		rc = -EINVAL;
-		goto out;
-	}
-
-	rc = get_uuid_str(uuid, client_uuid, clnt_login, uuid_buf, &uuid_buf_size);
-	if (rc < 0) {
-		pr_err("get uuid fail");
-		rc = -EINVAL;
-		goto out;
-	}
-
-	memcpy(temp_buf, uuid_buf, uuid_buf_size);
-	msg_arg->params[0].u.tmem.shm_ref = (unsigned long)(*shm);
-	msg_arg->params[0].u.tmem.size = uuid_buf_size;
-	msg_arg->params[0].u.tmem.buf_ptr = pa_addr;
-	return 0;
-
-out:
-	tee_shm_free(*shm);
-	return rc;
-}
-
-static int metadata_to_msg_param(struct tee_context *ctx,
-	const struct tee_ioctl_open_session_arg *arg,
-	struct optee_msg_arg *msg_arg, struct tee_shm **ca_shm,
-	struct tee_shm **uuid_shm)
-{
-	int rc;
 	uuid_t client_uuid;
+	int rc;
 
 	msg_arg->cmd = OPTEE_MSG_CMD_OPEN_SESSION;
 	msg_arg->cancel_id = arg->cancel_id;
@@ -315,18 +217,12 @@ static int metadata_to_msg_param(struct tee_context *ctx,
 	 * Initialize and add the meta parameters needed when opening a
 	 * session.
 	 */
-	if (DEBUG_CALL)
-		pr_info("UUID: 0x%x%x%x%x-0x%x%x-0x%x%x-0x%x%x%x%x%x%x%x%x\n",
-			arg->uuid[0], arg->uuid[1], arg->uuid[2],
-			arg->uuid[3], arg->uuid[4], arg->uuid[5], arg->uuid[6],
-			arg->uuid[7], arg->uuid[8], arg->uuid[9], arg->uuid[10],
-			arg->uuid[11], arg->uuid[12], arg->uuid[13],
-			arg->uuid[14], arg->uuid[15]);
-
-	msg_arg->params[0].attr = OPTEE_MSG_ATTR_TYPE_TMEM_INPUT |
-							  OPTEE_MSG_ATTR_META;
-	msg_arg->params[1].attr = OPTEE_MSG_ATTR_TYPE_TMEM_INPUT |
-							  OPTEE_MSG_ATTR_META;
+	msg_arg->params[0].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT |
+				  OPTEE_MSG_ATTR_META;
+	msg_arg->params[1].attr = OPTEE_MSG_ATTR_TYPE_VALUE_INPUT |
+				  OPTEE_MSG_ATTR_META;
+	memcpy(&msg_arg->params[0].u.value, arg->uuid, sizeof(arg->uuid));
+	msg_arg->params[1].u.value.c = arg->clnt_login;
 
 	rc = tee_session_calc_client_uuid(&client_uuid, arg->clnt_login,
 					  arg->clnt_uuid);
@@ -334,15 +230,9 @@ static int metadata_to_msg_param(struct tee_context *ctx,
 		pr_err("calc client uuid is failed\n");
 		return rc;
 	}
+	export_uuid(msg_arg->params[1].u.octets, &client_uuid);
 
-	rc = uuid_to_msg_param(ctx, uuid_shm, arg->uuid, client_uuid,
-						   arg->clnt_login, msg_arg);
-	if (rc) {
-		pr_err("uuid to msg param is failed\n");
-		return rc;
-	}
-
-	return ca_path_to_msg_param(ctx, ca_shm, msg_arg);
+	return 0;
 }
 
 int optee_open_session(struct tee_context *ctx,
@@ -352,8 +242,6 @@ int optee_open_session(struct tee_context *ctx,
 	struct optee *optee = NULL;
 	struct optee_context_data *ctxdata = NULL;
 	int rc;
-	struct tee_shm *ca_shm = NULL;
-	struct tee_shm *uuid_shm = NULL;
 	struct optee_msg_arg *msg_arg = NULL;
 	struct optee_session *sess = NULL;
 	size_t sz;
@@ -361,9 +249,13 @@ int optee_open_session(struct tee_context *ctx,
 	if (IS_ERR(ctx) || IS_ERR(arg) || IS_ERR(param))
 		return -EINVAL;
 
+	rc = optee_auth_ca();
+	if (rc)
+		return rc;
+
 	optee = tee_get_drvdata(ctx->teedev);
 	ctxdata = ctx->data;
-	/* +3 for the meta parameters added below */
+	/* +2 for the meta parameters added below */
 	sz = OPTEE_MSG_GET_ARG_SIZE(arg->num_params + 2);
 	msg_arg = kzalloc(sz, GFP_KERNEL);
 	if (!msg_arg) {
@@ -371,10 +263,10 @@ int optee_open_session(struct tee_context *ctx,
 		return -ENOMEM;
 	}
 
-	rc = metadata_to_msg_param(ctx, arg, msg_arg, &ca_shm, &uuid_shm);
+	rc = metadata_to_msg_param(arg, msg_arg);
 	if (rc) {
 		pr_err("metadata to msg param is failed\n");
-		goto release;
+		goto out;
 	}
 
 	rc = optee->ops->to_msg_param(optee, msg_arg->params + 2,
@@ -424,9 +316,6 @@ int optee_open_session(struct tee_context *ctx,
 
 	mitee_bench_add_node(arg->session, arg->uuid);
 out:
-	tee_shm_free(ca_shm);
-	tee_shm_free(uuid_shm);
-release:
 	kfree(msg_arg);
 	return rc;
 }
@@ -605,7 +494,8 @@ int optee_check_mem_type(unsigned long start, size_t num_pages)
 	 * Allow kernel address to register with OP-TEE as kernel
 	 * pages are configured as normal memory only.
 	 */
-	if (virt_addr_valid((const void *)(uintptr_t)start))
+	if (virt_addr_valid((const void *)(uintptr_t)start) ||
+	    is_vmalloc_addr((const void *)(uintptr_t)start))
 		return 0;
 
 	mmap_read_lock(mm);

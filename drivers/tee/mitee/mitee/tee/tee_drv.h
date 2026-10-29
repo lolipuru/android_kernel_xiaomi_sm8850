@@ -28,6 +28,10 @@
 #define TEE_SHM_POOL BIT(5) /* Memory allocated from pool */
 #define TEE_SHM_KERNEL_MAPPED BIT(6) /* Memory mapped in kernel space */
 #define TEE_SHM_PRIV BIT(7) /* Memory private to TEE driver */
+#define TEE_SHM_VMALLOC BIT(8) /* kaddr is a vmalloc buffer owned by the shm */
+
+/* TEE_IOC_SHM_ALLOC flags: register a vmalloc buffer instead of using the pool */
+#define TEE_IOCTL_SHM_ALLOC_VMALLOC 0x6d656d /* "mem" */
 
 struct device;
 struct tee_device;
@@ -351,6 +355,8 @@ struct tee_shm *tee_shm_alloc_kernel_buf(struct tee_context *ctx, size_t size);
  */
 struct tee_shm *tee_shm_register(struct tee_context *ctx, unsigned long addr,
 				 size_t length, u32 flags);
+
+struct tee_shm *tee_shm_alloc_vmalloc(struct tee_context *ctx, size_t size);
 
 /**
  * tee_shm_is_registered() - Check if shared memory object in registered in TEE

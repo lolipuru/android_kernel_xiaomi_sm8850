@@ -11,6 +11,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/vmalloc.h>
 #include <linux/uio.h>
 #include <linux/highmem.h>
 #include <linux/uio.h>
@@ -93,6 +94,8 @@ static void tee_shm_release(struct tee_device *teedev, struct tee_shm *shm)
 				"unregister shm %p failed: %d", shm, rc);
 
 		release_registered_pages(shm);
+		if (shm->flags & TEE_SHM_VMALLOC)
+			vfree(shm->kaddr);
 	}
 
 	teedev_ctx_put(shm->ctx);
@@ -212,7 +215,8 @@ struct tee_shm *tee_shm_register(struct tee_context *ctx, unsigned long addr,
 
 	mitee_bench_timestamp(0, "tee_shm_register enter");
 
-	if (flags != req_user_flags && flags != req_kernel_flags) {
+	if (flags != req_user_flags &&
+	    (flags & ~TEE_SHM_VMALLOC) != req_kernel_flags) {
 		pr_err("flags is failed (0x%x)\n", flags);
 		return ERR_PTR(-ENOTSUPP);
 	}
@@ -325,6 +329,41 @@ struct tee_shm *tee_shm_register_kernel_buf(struct tee_context *ctx,
 	return tee_shm_register(ctx, (unsigned long)addr, length, flags);
 }
 
+/**
+ * tee_shm_alloc_vmalloc() - Allocate a buffer and register it with the TEE
+ * @ctx:	Context that allocates the shared memory
+ * @size:	Requested size of the buffer
+ *
+ * Unlike tee_shm_alloc() the buffer doesn't come from the static pool, so
+ * it can be large. It is freed with the shm.
+ *
+ * @returns a pointer to 'struct tee_shm'
+ */
+struct tee_shm *tee_shm_alloc_vmalloc(struct tee_context *ctx, size_t size)
+{
+	struct tee_shm *shm;
+	void *va;
+
+	if (!size)
+		return ERR_PTR(-EINVAL);
+
+	/* zeroed and mappable to user space */
+	va = vmalloc_user(size);
+	if (!va)
+		return ERR_PTR(-ENOMEM);
+
+	shm = tee_shm_register(ctx, (unsigned long)va, size,
+			       TEE_SHM_DMA_BUF | TEE_SHM_KERNEL_MAPPED |
+			       TEE_SHM_VMALLOC);
+	if (IS_ERR(shm)) {
+		vfree(va);
+		return shm;
+	}
+	shm->kaddr = va;
+
+	return shm;
+}
+
 static int tee_shm_fop_release(struct inode *inode, struct file *filp)
 {
 	tee_shm_put(filp->private_data);
@@ -341,6 +380,9 @@ static int tee_shm_fop_mmap(struct file *filp, struct vm_area_struct *vma)
 		pr_err("flag is 0x%x\n", shm->flags);
 		return -EINVAL;
 	}
+
+	if (shm->flags & TEE_SHM_VMALLOC)
+		return remap_vmalloc_range(vma, shm->kaddr, vma->vm_pgoff);
 
 	/* check for overflowing the buffer's size */
 	if (vma->vm_pgoff + vma_pages(vma) > shm->size >> PAGE_SHIFT) {

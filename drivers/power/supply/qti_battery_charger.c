@@ -653,6 +653,7 @@ static void battery_chg_state_cb(void *priv, enum pmic_glink_state state)
 		bcdev->notify_en = false;
 }
 
+#if !IS_ENABLED(CONFIG_MCA_QCOM_SUBPMIC)
 /**
  * qti_battery_charger_get_prop() - Gets the property being requested
  *
@@ -701,6 +702,7 @@ int qti_battery_charger_get_prop(const char *name,
 	return rc;
 }
 EXPORT_SYMBOL(qti_battery_charger_get_prop);
+#endif
 
 static bool validate_message(struct battery_chg_dev *bcdev,
 			struct battery_charger_resp_msg *resp_msg, size_t len)

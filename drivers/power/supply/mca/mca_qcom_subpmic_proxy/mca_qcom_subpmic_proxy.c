@@ -160,19 +160,6 @@ struct qcom_subpmic_notify_entry {
 	int val;
 };
 
-static RAW_NOTIFIER_HEAD(hboost_notifier);
-
-int register_hboost_event_notifier(struct notifier_block *nb)
-{
-	return raw_notifier_chain_register(&hboost_notifier, nb);
-}
-EXPORT_SYMBOL(register_hboost_event_notifier);
-
-int unregister_hboost_event_notifier(struct notifier_block *nb)
-{
-	return raw_notifier_chain_unregister(&hboost_notifier, nb);
-}
-EXPORT_SYMBOL(unregister_hboost_event_notifier);
 
 int qti_battery_charger_get_prop(const char *name, int prop_id, int *val)
 {

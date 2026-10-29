@@ -154,7 +154,7 @@ struct mitee_comm_ops {
 					 struct tee_shm *shm);
 };
 
-extern const struct mitee_comm_ops mitee_ffa_comm_ops;
+extern const struct mitee_comm_ops mitee_msgq_comm_ops;
 
 struct mitee_worker {
 	uint32_t id;
@@ -246,8 +246,6 @@ void optee_wait_queue_init(struct optee_wait_queue *wq);
 void optee_wait_queue_exit(struct optee_wait_queue *wq);
 void mitee_rpc_callback_queue_init(struct mitee_rpc_callback_queue *queue);
 void mitee_rpc_callback_queue_deinit(struct mitee_rpc_callback_queue *queue);
-uint32_t mitee_rpc_callback(struct optee_msg_param_value *value, void *buf,
-				uint32_t size_in, uint32_t *size_out);
 
 u32 optee_supp_thrd_req(struct tee_context *ctx, u32 func, size_t num_params,
 			struct tee_param *param);

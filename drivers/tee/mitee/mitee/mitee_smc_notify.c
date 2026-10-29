@@ -15,6 +15,7 @@
 
 #include "mitee_smc_notify.h"
 #include "optee_ffa.h"
+#include "optee_private.h"
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
@@ -22,32 +23,26 @@
 #include <linux/printk.h>
 #include <linux/string.h>
 
-static struct mitee_smc_notify_ctx ctx;
-
-// smc_notify_init
-void mitee_smc_notify_init(struct ffa_device *dev)
-{
-	ctx.ffa_dev = dev;
-}
-
 static int mitee_smc_notify_send(uint8_t module_id, uint8_t type, unsigned int token,
 			uint16_t data_size, uint64_t data0, uint64_t data1, uint64_t data2)
 {
 	int ret;
-	/* ffa ops */
-	const struct ffa_msg_ops *msg_ops = ctx.ffa_dev->ops->msg_ops;
-	struct ffa_send_direct_data data = {
-		OPTEE_FFA_SMC_NOTIFY,
-		(uint64_t)token | ((uint64_t)module_id << 32) |
-		((uint64_t)type << 40) | ((uint64_t)data_size << 48),
-		data0,
-		data1,
-		data2,
+	struct optee *optee = get_optee_drv_state();
+	union common_args args = {
+		.in.cmd = OPTEE_FFA_SMC_NOTIFY,
+		.in.param = {
+			(uint64_t)token | ((uint64_t)module_id << 32) |
+			((uint64_t)type << 40) | ((uint64_t)data_size << 48),
+			data0,
+			data1,
+			data2,
+		},
 	};
-	ret = msg_ops->sync_send_receive(ctx.ffa_dev, &data);
+
+	ret = optee->comm_ops->call(&args);
 	if (type == MITEE_NOTIFICATION_TYPE_CONNECT && !ret) {
 		// return connect token
-		return (int)data.data0;
+		return (int)args.out.resp;
 	}
 	return ret;
 }

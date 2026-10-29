@@ -19,7 +19,6 @@
 #include <asm/page.h>
 #include <linux/log2.h>
 #include <linux/notifier.h>
-#include "arm_ffa.h"
 #include <linux/platform_device.h>
 
 #define MITEE_MEMLOG_SIZE (PAGE_SIZE * 64)

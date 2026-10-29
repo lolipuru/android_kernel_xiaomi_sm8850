@@ -17,7 +17,6 @@
 #define _MITEE_TASK_H_
 
 #include <asm/page.h>
-#include "arm_ffa.h"
 #include <linux/types.h>
 #include <linux/list.h>
 #include <tee_drv.h>

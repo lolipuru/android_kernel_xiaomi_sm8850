@@ -7,7 +7,7 @@ mitee-objs :=	\
 	call.o \
 	rpc.o \
 	supp.o \
-	ffa_abi.o \
+	msgq_abi.o \
 	device.o \
 	bench.o \
 	mitee_memlog.o \
@@ -23,4 +23,3 @@ ccflags-y += -DENABLE_CMDLINE_SUPPORT
 endif
 
 ccflags-y += -I$(KERNEL_SRC)/../xring-modules/drivers/tee/mitee/mitee/tee
-ccflags-y += -I$(KERNEL_SRC)/../xring-modules/drivers/xr_arm_ffa

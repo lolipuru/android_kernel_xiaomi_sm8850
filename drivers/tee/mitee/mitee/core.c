@@ -150,7 +150,7 @@ static int mitee_get_comm_ops(struct device_node *node,
 {
 	(void)node;
 
-	*ops = &mitee_ffa_comm_ops;
+	*ops = &mitee_msgq_comm_ops;
 
 	return 0;
 }
@@ -960,11 +960,6 @@ static int mitee_core_init(void)
 #endif
 	optee_svc = optee;
 	mitee_dynamic_mem_init();
-	//rpc callback should register after optee_svc was initialized
-	mitee_rpc_register_callback(REE_CALLBACK_MODULE_TEE_FRAMEWORK,
-				    OPTEE_REE_CALLBACK_ALLOCATE_NONSECMEM, mitee_rpc_callback);
-	mitee_rpc_register_callback(REE_CALLBACK_MODULE_TEE_FRAMEWORK,
-				    OPTEE_REE_CALLBACK_FREE_NONSECMEM, mitee_rpc_callback);
 	/* mitee log device function START */
 	ATOMIC_INIT_NOTIFIER_HEAD(&optee->notifier);
 	optee->mitee_memlog_pdev = platform_device_alloc("mitee_memlog", 0);

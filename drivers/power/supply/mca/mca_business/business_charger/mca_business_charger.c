@@ -844,8 +844,10 @@ business_charger_process_pmic_init_done(struct business_charger *charger)
 				  MCA_EVENT_PMIC_INIT_DONE, 1);
 	mca_strategy_func_process(STRATEGY_FUNC_TYPE_BASIC_WIRELESS,
 				  MCA_EVENT_PMIC_INIT_DONE, 1);
+	mca_strategy_func_process(STRATEGY_FUNC_TYPE_FG,
+				  MCA_EVENT_PMIC_INIT_DONE, 1);
 	if (charger->wls_support)
-		schedule_delayed_work(&charger->pmic_init_done_notify_work, 0);
+		schedule_delayed_work(&charger->reset_rx_work, 0);
 }
 
 static void

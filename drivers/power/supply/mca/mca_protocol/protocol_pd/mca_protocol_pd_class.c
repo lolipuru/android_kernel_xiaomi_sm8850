@@ -27,6 +27,7 @@
 #include <linux/mutex.h>
 #include <linux/notifier.h>
 #include <linux/kobject.h>
+#include <linux/usb/pd.h>
 #include <mca/common/mca_event.h>
 #include <mca/common/mca_log.h>
 #include <mca/protocol/protocol_pd_class.h>
@@ -40,6 +41,11 @@
 
 #define protocol_class_pd_invalid_ops(temp, name) (!temp || !temp->ops || !temp->ops->name)
 #define MCA_PPS_MAX_VOL_10V 10000
+
+#define PD_APDO_MIN_CURRENT		500
+#define PD_APDO_MAX_VOLT		22000
+#define PD_APDO_UNVERIFIED_MAX_CURRENT	1700
+#define PD_APDO_LOW_POWER		22000000
 
 enum mca_apdo_max {
 	MCA_APDO_MAX_30W = 30,
@@ -467,11 +473,46 @@ EXPORT_SYMBOL(protocol_class_pd_get_current_state);
 int protocol_class_pd_get_pdos(unsigned int port_num, struct pd_pdo *pdos, int count)
 {
 	struct protocol_class_pd_ops_data *temp_data = protocol_class_pd_get_ops_data(port_num);
+	struct pd_pdo raw[PROTOCOL_PD_MAX_PDO_NUMS] = { 0 };
+	int verified, i, ret;
+
+	if (count > PROTOCOL_PD_MAX_PDO_NUMS)
+		return -1;
 
 	if (protocol_class_pd_invalid_ops(temp_data, protocol_pd_get_pdos))
 		return -1;
 
-	return temp_data->ops->protocol_pd_get_pdos(pdos, count, temp_data->data);
+	ret = temp_data->ops->protocol_pd_get_pdos(raw, count, temp_data->data);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < count; i++) {
+		memset(&pdos[i], 0, sizeof(pdos[i]));
+
+		if (raw[i].type == PDO_TYPE_FIXED) {
+			pdos[i] = raw[i];
+			continue;
+		}
+
+		if (raw[i].type != PDO_TYPE_APDO ||
+		    raw[i].max_current < PD_APDO_MIN_CURRENT ||
+		    raw[i].max_volt > PD_APDO_MAX_VOLT)
+			continue;
+
+		pdos[i] = raw[i];
+
+		if (raw[i].max_current <= PD_APDO_UNVERIFIED_MAX_CURRENT ||
+		    raw[i].max_volt * raw[i].max_current > PD_APDO_LOW_POWER)
+			continue;
+
+		verified = 0;
+		if (temp_data->ops->protocol_pd_get_pd_verifed)
+			temp_data->ops->protocol_pd_get_pd_verifed(&verified, temp_data->data);
+		if (!verified)
+			pdos[i].max_current = PD_APDO_UNVERIFIED_MAX_CURRENT;
+	}
+
+	return 0;
 }
 EXPORT_SYMBOL(protocol_class_pd_get_pdos);
 

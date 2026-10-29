@@ -38,6 +38,7 @@ struct pd_pdo {
 	int min_volt;
 	int max_volt;
 	int max_current;
+	int type;
 };
 
 struct usbpd_vdm_data {

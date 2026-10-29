@@ -150,9 +150,9 @@ static int adsp_pd_protocol_get_pdos(struct pd_pdo *pdos, int count, void *data)
 	if (count > 0 && ret == 0) {
 		for (i = 0; i < count; i++)
 			mca_log_info(
-				"pdo[%d] min_volt: %d, max_volt: %d, max_current: %d\n",
+				"pdo[%d] min_volt: %d, max_volt: %d, max_current: %d, type: %d\n",
 				i, pdos[i].min_volt, pdos[i].max_volt,
-				pdos[i].max_current);
+				pdos[i].max_current, pdos[i].type);
 	}
 	return ret;
 }

@@ -96,6 +96,9 @@ static int wireless_psy_get_prop(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		rc = strategy_class_fg_ops_get_temperature(&val->intval);
+		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		break;
 	case POWER_SUPPLY_PROP_SCOPE:

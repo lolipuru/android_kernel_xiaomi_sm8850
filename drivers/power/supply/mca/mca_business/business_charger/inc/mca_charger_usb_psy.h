@@ -21,15 +21,18 @@
 
 #include <linux/device.h>
 #include <linux/power_supply.h>
+#include <mca/common/mca_voter.h>
 
 struct usb_psy_info {
 	struct device *dev;
 	struct power_supply_desc *usb_psy_desc;
 	struct power_supply *usb_psy;
 	struct power_supply *batt_psy;
+	struct mca_votable *input_suspend_voter;
 	int present;
 	int online;
 	int charge_enable;
+	int antiburn;
 };
 
 struct usb_psy_info *business_charger_usb_psy_init(struct device *dev);

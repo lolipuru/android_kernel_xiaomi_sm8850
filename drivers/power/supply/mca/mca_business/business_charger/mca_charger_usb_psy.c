@@ -63,10 +63,21 @@ static int usb_psy_get_prop(struct power_supply *psy,
 		val->intval = info->present;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
+		if (!info->input_suspend_voter)
+			info->input_suspend_voter =
+				mca_find_votable("input_suspend");
+		if (info->input_suspend_voter &&
+		    mca_get_client_vote(info->input_suspend_voter,
+					"micharge")) {
+			val->intval = 0;
+			break;
+		}
+
 		(void)mca_strategy_func_get_status(
 			STRATEGY_FUNC_TYPE_BUCK_CHARGE,
 			STRATEGY_STATUS_TYPE_ONLINE, &info->online);
-		val->intval = info->online;
+		val->intval = (info->charge_enable && !info->antiburn) ?
+				      info->online : 0;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		(void)platform_class_buckchg_ops_get_usb_sns_volt(

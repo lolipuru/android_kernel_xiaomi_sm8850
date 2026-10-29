@@ -1083,6 +1083,10 @@ business_charger_process_antiburn_change(struct business_charger *charger,
 	int antiburn = connector_antiburn_is_triggered();
 
 	mca_log_info("antiburn: %d\n", antiburn);
+	if (charger->usb_psy_info) {
+		charger->usb_psy_info->antiburn = antiburn;
+		business_usb_psy_event_process(charger->usb_psy_info);
+	}
 	mca_strategy_func_process(STRATEGY_FUNC_TYPE_QUICK_CHARGE, event,
 				  antiburn);
 	mca_strategy_func_process(STRATEGY_FUNC_TYPE_BUCK_CHARGE, event,

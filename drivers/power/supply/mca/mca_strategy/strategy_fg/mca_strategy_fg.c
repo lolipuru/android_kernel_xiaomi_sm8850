@@ -30,6 +30,7 @@
 #include <linux/kthread.h>
 #include <linux/workqueue.h>
 #include <linux/platform_device.h>
+#include <linux/random.h>
 #include <linux/reboot.h>
 #include <mca/common/mca_log.h>
 #include <mca/common/mca_event.h>
@@ -110,6 +111,9 @@
 #define DEFAULT_DESIGN_CAPACITY 5000
 #define FG_FORCE_REPORT_FULL_TIMES 2
 #define STRATEGY_FG_ABNORMAL_DFX_DELAY 17500
+
+#define CAPACITY_COMP_STEP_MAH		50
+#define CAPACITY_COMP_MIN_DELTA_MAH	151
 
 void onewire_check_auth_pass(bool *auth_pass)
 {
@@ -3095,6 +3099,16 @@ int strategy_full_design_parse_dt(struct strategy_fg *fg)
 					DEFAULT_DESIGN_CAPACITY);
 	}
 
+	fg->support_dynamic_capacity_comp =
+		of_property_read_bool(node, "support_dynamic_capacity_comp");
+	if (hwid && hwid->country_version != CountryCN)
+		(void)mca_parse_dts_u32(node, "capacity_comp_gl",
+					&fg->capacity_comp, 0);
+	else
+		(void)mca_parse_dts_u32(node, "capacity_comp",
+					&fg->capacity_comp, 0);
+	fg->capacity_comp_update = true;
+
 	return 0;
 }
 
@@ -3441,6 +3455,7 @@ static int strategy_fg_ops_set_charging_done(void *data, bool charging_done)
 		mca_vote(fg->en_voter, "term_recharge", true, 0);
 		mca_vote(fg->charge_limit_voter, "qc_done", false, 0);
 		fg->charging_done = true;
+		fg->capacity_comp_update = true;
 		fg->recharging = false;
 		fg->lossless_recharge = false;
 		fg->near_vterm = false;
@@ -3593,6 +3608,66 @@ static int strategy_fg_ops_get_fcc(void *data, int *fcc)
 		return -1;
 
 	*fcc = fg->batt_fcc;
+
+	return 0;
+}
+
+static int strategy_fg_calc_dynamic_capa_comp(struct strategy_fg *fg)
+{
+	static u32 random_num;
+	int soh = 100;
+	int fcc_delta, rem;
+	int comp = 0;
+
+	platform_fg_ops_get_ui_soh(FG_IC_MASTER, &soh);
+	fcc_delta = fg->batt_dc / 1000 * soh / 100 - fg->batt_fcc / 1000;
+
+	if (fg->capacity_comp_update) {
+		rem = fcc_delta % CAPACITY_COMP_STEP_MAH;
+		random_num = rem > 0 ? get_random_u32_below(rem) : 0;
+		fg->capacity_comp_update = false;
+	}
+
+	if (fcc_delta >= CAPACITY_COMP_MIN_DELTA_MAH &&
+	    random_num <= CAPACITY_COMP_STEP_MAH)
+		comp = (fcc_delta / CAPACITY_COMP_STEP_MAH *
+				CAPACITY_COMP_STEP_MAH + (int)random_num -
+			CAPACITY_COMP_STEP_MAH) * 1000;
+
+	mca_log_info("comp %d, fcc_delta %d, random_num %d\n", comp, fcc_delta,
+		     random_num);
+	return comp;
+}
+
+static int strategy_fg_ops_get_comp_fcc(void *data, int *comp_fcc)
+{
+	struct strategy_fg *fg = (struct strategy_fg *)data;
+	int comp;
+
+	if (!fg || !fg->fg_init_flag)
+		return -1;
+
+	if (fg->support_dynamic_capacity_comp)
+		comp = strategy_fg_calc_dynamic_capa_comp(fg);
+	else
+		comp = fg->capacity_comp;
+
+	*comp_fcc = min(fg->batt_fcc + comp, fg->batt_dc);
+
+	return 0;
+}
+
+static int strategy_fg_ops_get_comp_rm(void *data, int *comp_rm)
+{
+	struct strategy_fg *fg = (struct strategy_fg *)data;
+	int comp_fcc;
+
+	if (!fg || !fg->fg_init_flag)
+		return -1;
+
+	comp_fcc = fg->batt_dc;
+	strategy_fg_ops_get_comp_fcc(fg, &comp_fcc);
+	*comp_rm = comp_fcc / 1000 * fg->batt_raw_soc / 10000 * 1000;
 
 	return 0;
 }
@@ -3872,7 +3947,9 @@ static struct strategy_fg_class_ops g_strategy_fg_ops = {
 	.strategy_fg_get_authentic = strategy_fg_ops_get_authentic,
 	.strategy_fg_get_dc = strategy_fg_ops_get_dc,
 	.strategy_fg_get_rm = strategy_fg_ops_get_rm,
+	.strategy_fg_get_comp_rm = strategy_fg_ops_get_comp_rm,
 	.strategy_fg_get_fcc = strategy_fg_ops_get_fcc,
+	.strategy_fg_get_comp_fcc = strategy_fg_ops_get_comp_fcc,
 	.strategy_fg_get_health = strategy_fg_ops_get_health,
 	.strategy_fg_get_first_termination = strategy_fg_ops_get_first_termiation,
 	.strategy_fg_get_pack_vendor_id = strategy_fg_ops_get_pack_vendor_id,

@@ -15,6 +15,7 @@ def register_modules(registry):
         includes = ["drivers/power/supply/mca/include"],
         deps = [
             # do not sort
+            "drivers/power/supply/mca/mca_common",
             "drivers/power/supply/mca/mca_common/mca_sysfs",
             "drivers/power/supply/mca/mca_common/mca_event",
             "drivers/power/supply/mca/mca_common/mca_log",

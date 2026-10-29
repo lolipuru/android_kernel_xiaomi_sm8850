@@ -255,6 +255,9 @@ struct strategy_fg {
 	bool support_dod_vcutoff;
 	bool support_vpack_low_shutdown;
 	bool support_full_design_gl;
+	bool support_dynamic_capacity_comp;
+	bool capacity_comp_update;
+	int capacity_comp;
 	int weight[WEIGHT_LEVEL_MAX];
 	struct mca_battery_shutdown_para_info batt_spec_para;
 	struct mca_battery_shutdown_para_info batt_health_para;

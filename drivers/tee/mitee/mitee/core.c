@@ -31,9 +31,7 @@
 #include "rpc_callback.h"
 #include "dynamic_mem.h"
 #include "mitee_task.h"
-#include "mitee_mdr.h"
 #include "tee_bench.h"
-#include "mitee_memory_monitor.h"
 
 /*
  * This file implement the core API of mitee.
@@ -1032,21 +1030,12 @@ static int mitee_core_init(void)
 	}
 	/* mitee task function END */
 
-	/*mitee mdr*/
-	rc = tee_mdr_init();
-	if (rc) {
-		pr_err("failed to tee_mdr_init (%d)\n", rc);
-		goto err_tee_mdr_deinit;
-	}
 	optee_bm_enable();
 	mitee_bench_enable();
-	mitee_memory_monitor_init();
 
 	pr_info("initialized driver succ\n");
 	return 0;
 
-err_tee_mdr_deinit:
-	tee_mdr_exit();
 err_free_workers:
 	kfree(optee->workers);
 err_task_list_deinit:
@@ -1109,10 +1098,8 @@ static void optee_core_exit(void)
 
 	kfree(optee->workers);
 	kfree(optee);
-	tee_mdr_exit();
 	optee_bm_disable();
 	mitee_bench_disable();
-	mitee_memory_monitor_exit();
 
 	pr_info("succ\n");
 }

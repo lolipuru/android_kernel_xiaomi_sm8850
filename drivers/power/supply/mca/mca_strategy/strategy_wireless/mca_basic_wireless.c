@@ -4047,9 +4047,9 @@ static int strategy_wireless_parse_cmd_type_para(
 	struct adapter_cmd_type_info *cmd_type_info)
 {
 	int array_len, i, j, len_temp;
-	int idata[ADAPTER_MAX * ADAPTER_CMD_TYPE_SETTING_MAX] = { 0 };
+	int idata[ADAPTER_CMD_TYPE_ROW_MAX * ADAPTER_CMD_TYPE_SETTING_MAX] = { 0 };
 
-	array_len = mca_parse_dts_u32_count(node, name, ADAPTER_MAX,
+	array_len = mca_parse_dts_u32_count(node, name, ADAPTER_CMD_TYPE_ROW_MAX,
 					    ADAPTER_CMD_TYPE_SETTING_MAX);
 	if (array_len < 0) {
 		mca_log_err("parse %s failed", name);
@@ -4071,9 +4071,15 @@ static int strategy_wireless_parse_cmd_type_para(
 			idata[j + ADAPTER_CMD_TYPE_SETTING_ICL];
 		cmd_type_info->cmd_fx[i].fcc_setting =
 			idata[j + ADAPTER_CMD_TYPE_SETTING_FCC];
-		mca_log_debug("[%d] icl_setting: %d; fcc_setting: %d\n", i,
-			      cmd_type_info->cmd_fx[i].icl_setting,
-			      cmd_type_info->cmd_fx[i].fcc_setting);
+		cmd_type_info->cmd_fx[i].vout =
+			idata[j + ADAPTER_CMD_TYPE_SETTING_VOUT];
+		cmd_type_info->cmd_fx[i].allow_qc =
+			idata[j + ADAPTER_CMD_TYPE_SETTING_ALLOW_QC];
+		mca_log_debug("[%d] icl_setting: %d; fcc_setting: %d; vout: %d; allow_qc: %d\n",
+			      i, cmd_type_info->cmd_fx[i].icl_setting,
+			      cmd_type_info->cmd_fx[i].fcc_setting,
+			      cmd_type_info->cmd_fx[i].vout,
+			      cmd_type_info->cmd_fx[i].allow_qc);
 	}
 	return 0;
 }

@@ -76,7 +76,7 @@
 #define SUPER_TX_FREQUENCY_MIN_KHZ 116
 #define SUPER_TX_FREQUENCY_MAX_KHZ 141
 
-#define UUID_PARA_MAX_GROUP 16
+#define UUID_PARA_MAX_GROUP 18
 
 #define RX_CHECK_SUCCESS (1 << 0)
 #define TX_CHECK_SUCCESS (1 << 1)
@@ -133,7 +133,7 @@ enum mca_wireless_basic_uuid_para_ele {
 	MCA_BASIC_WLS_UUID_PARA_MAX,
 };
 
-#define ADAPTER_PARA_MAX_GROUP 16
+#define ADAPTER_PARA_MAX_GROUP 18
 
 enum mca_wireless_basic_compatible_para_ele {
 	MCA_BASIC_WLS_STANDARD = 0,
@@ -221,9 +221,13 @@ enum ADAPTER_CMD_TYPE {
 	ADAPTER_CMD_TYPE_MAX = 6,
 };
 
+#define ADAPTER_CMD_TYPE_ROW_MAX 17
+
 enum mca_wireless_basic_adapter_cmd_type_setting_para {
 	ADAPTER_CMD_TYPE_SETTING_ICL = 0,
 	ADAPTER_CMD_TYPE_SETTING_FCC,
+	ADAPTER_CMD_TYPE_SETTING_VOUT,
+	ADAPTER_CMD_TYPE_SETTING_ALLOW_QC,
 	ADAPTER_CMD_TYPE_SETTING_MAX,
 };
 
@@ -299,6 +303,8 @@ enum FW_UPDATE_CMD {
 struct adapter_cmd_type_fx {
 	int icl_setting;
 	int fcc_setting;
+	int vout;
+	int allow_qc;
 };
 
 struct adapter_cmd_type_info {

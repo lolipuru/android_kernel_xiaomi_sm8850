@@ -4,140 +4,129 @@
  * All Rights Reserved.
  */
 
-#include <linux/anon_inodes.h>
-#include <linux/idr.h>
-#include <linux/vmalloc.h>
-#include <linux/mm.h>
+#define pr_fmt(fmt) KBUILD_MODNAME ": tui: " fmt
 
-#include "mitee_tui.h"
+#include <linux/anon_inodes.h>
+#include <linux/fs.h>
+#include <linux/idr.h>
+#include <linux/mm.h>
+#include <linux/mutex.h>
+#include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/vmalloc.h>
+
 #include "tui_shm.h"
 
-static struct idr g_tui_idr;
-static struct mutex g_tui_mutex;
+/* buffers that can be looked up by id, each holds a reference */
+static DEFINE_IDR(tui_shm_idr);
+static DEFINE_MUTEX(tui_shm_mutex);
 
-int tui_shm_init(void)
+void tui_shm_deinit(void)
 {
-	idr_init(&g_tui_idr);
-	mutex_init(&g_tui_mutex);
-	return 0;
+	struct tui_shm *shm;
+	int id;
+
+	mutex_lock(&tui_shm_mutex);
+	idr_for_each_entry(&tui_shm_idr, shm, id) {
+		idr_remove(&tui_shm_idr, id);
+		tui_shm_put(shm);
+	}
+	mutex_unlock(&tui_shm_mutex);
+
+	idr_destroy(&tui_shm_idr);
 }
 
-int tui_shm_deinit(void)
+struct tui_shm *tui_shm_alloc(size_t size, const uint8_t *name)
 {
-	idr_destroy(&g_tui_idr);
-	mutex_destroy(&g_tui_mutex);
-	return 0;
-}
+	struct tui_shm *shm;
+	int rc;
 
-struct tui_shm *tui_shm_alloc(size_t size, u32 flags)
-{
-	int ret = 0;
-	struct tui_shm *shm = NULL;
-	uint8_t *page_buf = NULL;
-
-	if (!(flags & TUI_SHM_MAPPED)) {
-		tui_dev_err(-EINVAL, "shm flags is invalid");
+	if (!size)
 		return ERR_PTR(-EINVAL);
-	}
-
-	if (!size) {
-		tui_dev_err(-EINVAL, "size is invalid");
-		return ERR_PTR(-EINVAL);
-	}
 
 	shm = kzalloc(sizeof(*shm), GFP_KERNEL);
-	if (!shm) {
-		tui_dev_err(-ENOMEM, "fail to kzalloc shm");
+	if (!shm)
 		return ERR_PTR(-ENOMEM);
-	}
 
-	shm->flags = flags | TUI_SHM_USER_MAPPED;
-
-	page_buf = (uint8_t *)vmalloc_user(PAGE_ALIGN(size));
-	if (!page_buf) {
-		tui_dev_err(-ENOMEM, "fail to vmalloc_user page, size:%zu", PAGE_ALIGN(size));
-		ret = -ENOMEM;
-		goto err_alloc_mem;
-	}
-
-	shm->vaddr = page_buf;
 	shm->size = PAGE_ALIGN(size);
-
-	mutex_lock(&g_tui_mutex);
-	shm->id = idr_alloc(&g_tui_idr, shm, 1, 0, GFP_KERNEL);
-	mutex_unlock(&g_tui_mutex);
-	if (shm->id < 0) {
-		tui_dev_err(-EINVAL, "fail to idr_alloc shm id");
-		ret = -EINVAL;
-		goto err_alloc_id;
+	shm->vaddr = vmalloc_user(shm->size);
+	if (!shm->vaddr) {
+		rc = -ENOMEM;
+		goto err_free_shm;
 	}
-	tui_dev_devel("shm alloc shm->id:%d, size:%lu\n", shm->id, shm->size);
+	strscpy(shm->name, name, sizeof(shm->name));
+	refcount_set(&shm->refcount, 1);
+
+	mutex_lock(&tui_shm_mutex);
+	shm->id = idr_alloc(&tui_shm_idr, shm, 1, 0, GFP_KERNEL);
+	mutex_unlock(&tui_shm_mutex);
+	if (shm->id < 0) {
+		rc = shm->id;
+		goto err_free_buf;
+	}
 
 	return shm;
 
-err_alloc_id:
-	vfree(page_buf);
-err_alloc_mem:
+err_free_buf:
+	vfree(shm->vaddr);
+err_free_shm:
 	kfree(shm);
-
-	return ERR_PTR(ret);
+	return ERR_PTR(rc);
 }
 
-
-void tui_shm_free(struct tui_shm *shm)
+void tui_shm_put(struct tui_shm *shm)
 {
-	mutex_lock(&g_tui_mutex);
+	if (!refcount_dec_and_test(&shm->refcount))
+		return;
 
-	if (shm != NULL) {
-		if ((shm->flags & TUI_SHM_USER_MAPPED) && shm->id > 0) {
-			tui_dev_info("free shm, name=%s\n", shm->name);
-			tui_dev_devel("shm remove, shm->id:%d, fd=%d\n", shm->id, shm->fd);
-			idr_remove(&g_tui_idr, shm->id);
-			if (shm->vaddr)
-				vfree(shm->vaddr);
-			kfree(shm);
-		}
+	vfree(shm->vaddr);
+	kfree(shm);
+}
+
+/* drop the id, the buffer lives on while it is still referenced */
+void tui_shm_remove(struct tui_shm *shm)
+{
+	bool removed = false;
+
+	mutex_lock(&tui_shm_mutex);
+	if (idr_find(&tui_shm_idr, shm->id) == shm) {
+		idr_remove(&tui_shm_idr, shm->id);
+		removed = true;
 	}
+	mutex_unlock(&tui_shm_mutex);
 
-	mutex_unlock(&g_tui_mutex);
+	if (removed)
+		tui_shm_put(shm);
+}
+
+/* returns a referenced buffer, release it with tui_shm_put() */
+struct tui_shm *tui_shm_get_by_id(int id)
+{
+	struct tui_shm *shm;
+
+	mutex_lock(&tui_shm_mutex);
+	shm = idr_find(&tui_shm_idr, id);
+	if (shm)
+		refcount_inc(&shm->refcount);
+	mutex_unlock(&tui_shm_mutex);
+
+	return shm ?: ERR_PTR(-EINVAL);
 }
 
 static int tui_shm_fop_release(struct inode *inode, struct file *filp)
 {
-	struct tui_shm *shm = (struct tui_shm *)filp->private_data;
-
-	tui_dev_info("release fd, and not free shm, name=%s\n",
-			shm ? (char *)shm->name : "NULL");
+	tui_shm_put(filp->private_data);
 	return 0;
 }
 
 static int tui_shm_fop_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	int res = 0;
 	struct tui_shm *shm = filp->private_data;
-	unsigned long size = vma->vm_end - vma->vm_start;
 
-	tui_dev_devel("size:%zu, shm->size:%zu, shm->flags:%d, shm->id:%d\n",
-				  size, shm->size, shm->flags, shm->id);
-
-	if (!(shm->flags & TUI_SHM_USER_MAPPED)) {
-		tui_dev_err(-EINVAL, "shm flags is invalid");
+	if (vma->vm_pgoff + vma_pages(vma) > shm->size >> PAGE_SHIFT)
 		return -EINVAL;
-	}
 
-	/* check for overflowing the buffer's size */
-	if (vma->vm_pgoff + vma_pages(vma) > shm->size >> PAGE_SHIFT) {
-		tui_dev_err(-EINVAL, "vma size is over shm_size, error");
-		return -EINVAL;
-	}
-
-	res = remap_vmalloc_range(vma, (void *)shm->vaddr, vma->vm_pgoff);
-	if (res < 0) {
-		tui_dev_err(-EINVAL, "mmap: remap failed with error");
-		return -ENOMEM;
-	}
-
-	return res;
+	return remap_vmalloc_range(vma, shm->vaddr, vma->vm_pgoff);
 }
 
 static const struct file_operations tui_shm_fops = {
@@ -146,49 +135,15 @@ static const struct file_operations tui_shm_fops = {
 	.mmap = tui_shm_fop_mmap,
 };
 
-int tui_shm_create_fd(uint8_t *name, struct tui_shm *shm)
+/* the file holds its own reference to @shm */
+struct file *tui_shm_get_file(struct tui_shm *shm)
 {
-	int fd = -1;
+	struct file *file;
 
-	mutex_lock(&g_tui_mutex);
+	refcount_inc(&shm->refcount);
+	file = anon_inode_getfile(shm->name, &tui_shm_fops, shm, O_RDWR);
+	if (IS_ERR(file))
+		tui_shm_put(shm);
 
-	if (!(shm->flags & TUI_SHM_USER_MAPPED) || (name == NULL) || (strlen(name) == 0)) {
-		tui_dev_err(-EINVAL, "shm flags is invalid");
-		return -EINVAL;
-	}
-	fd = anon_inode_getfd(name, &tui_shm_fops, shm, O_RDWR);
-	if (fd < 0) {
-		tui_dev_err(-EINVAL, "failed to create anon fd, err=%d", fd);
-		mutex_unlock(&g_tui_mutex);
-		return -ENOMEM;
-	}
-	memcpy(shm->name, name, strlen(name));
-	shm->fd = fd;
-
-	mutex_unlock(&g_tui_mutex);
-	return fd;
-}
-
-void tui_shm_delete_fd(uint8_t *name, int fd)
-{
-	mutex_lock(&g_tui_mutex);
-	tui_dev_info("not release fd, and close fd in userspace, name=%s\n",
-			name ? (char *)name : "NULL");
-	mutex_unlock(&g_tui_mutex);
-}
-
-struct tui_shm *tui_shm_get_data_byid(int id)
-{
-	struct tui_shm *shm = NULL;
-
-	mutex_lock(&g_tui_mutex);
-
-	shm = idr_find(&g_tui_idr, id);
-	if (!shm) {
-		tui_dev_err(-EINVAL, "failed to get data by anonid, err=%d", id);
-		shm = ERR_PTR(-EINVAL);
-	}
-
-	mutex_unlock(&g_tui_mutex);
-	return shm;
+	return file;
 }

@@ -8,27 +8,6 @@
 #define MITEE_TUI_H
 
 #include <linux/types.h>
-#include "../mitee/mitee_smc_notify.h"
-#include "../mitee/optee_msg.h"
-#include "tui_common.h"
-
-#define TUI_TAG "mitee-tui "
-
-extern struct device tui_dev;
-
-#define tui_dev_err(__ret__, fmt, ...) \
-	dev_err(&tui_dev, "ERROR %d %s: " fmt "\n", \
-		__ret__, __func__, ##__VA_ARGS__)
-
-#define tui_dev_info(fmt, ...) \
-	dev_info(&tui_dev, "INFO %s: " fmt "\n", __func__, ##__VA_ARGS__)
-
-#ifdef DEBUG
-#define tui_dev_devel(fmt, ...) \
-	dev_info(&tui_dev, "DEBUG %s: " fmt "\n", __func__, ##__VA_ARGS__)
-#else /* DEBUG */
-#define tui_dev_devel(...)		do {} while (0)
-#endif /* !DEBUG */
 
 /*
  * defines for the ioctl TUI driver module function call from user space.
@@ -50,6 +29,8 @@ extern struct device tui_dev;
 //notify cancel macro
 #define TUI_MAGIC_NUM 0x0a0b0c0d
 #define TUI_SVC_ID 0x0
+#define TUI_NOTIFY_CANCEL 0x0c
+
 /**
  * Return codes of driver commands.
  */
@@ -62,17 +43,13 @@ extern struct device tui_dev;
 #define TUI_ERR_NO_EVENT            6
 #define TUI_ERR_OUT_OF_MEMORY       7
 #define TUI_ERR_TIMEOUT             8
-/* ... add more error codes when needed */
 
+/* commands from the TUI TA, REE_CALLBACK_MODULE_TEE_TUI */
 #define CMD_TUI_SVC_NONE             0
 #define CMD_TUI_SVC_GET_SCREEN_INFO  1
 #define CMD_TUI_SVC_OPEN_SESSION     2
 #define CMD_TUI_SVC_CLOSE_SESSION    3
 #define CMD_TUI_SVC_GET_FONT_BUFFER  4
-#define CMD_TUI_SVC_INIT_TOUCH       5
-#define CMD_TUI_SVC_INIT_DISPLAY     6
-#define CMD_TUI_SVC_DEINIT_TOUCH     7
-#define CMD_TUI_SVC_DEINIT_DISPLAY   8
 
 /* Command header */
 struct mitee_tui_command_t {
@@ -89,9 +66,9 @@ struct mitee_tui_resolution_t {
 /* tui_shm construct */
 struct mitee_tui_shm_t {
 	uint8_t shm_name[16];
-	int shm_fd;
+	int32_t shm_fd;
 	int32_t shm_id;
-	int32_t shm_size;
+	uint64_t shm_size;
 };
 
 /* Response header */
@@ -104,30 +81,18 @@ struct mitee_tui_response_t {
 	} data;
 };
 
+/* CMD_TUI_SVC_GET_SCREEN_INFO reply to the TA */
 struct screen_info_t {
 	uint64_t width;
 	uint64_t height;
-	enum tpd_vendor_id_t panel_vendor;
-	uint64_t pa; // pa or sfd
-};
-
-/* font info*/
-struct font_info {
-	uint64_t font_size;
-	uint8_t *font_buffer;
-	struct tui_shm *font_shm;
+	uint32_t panel_vendor;	/* unused, the TUI service drives the panel */
+	uint64_t pa;		/* unused, the TUI service owns the frame buffer */
 };
 
 /* tui_ioctl_data */
 struct tui_ioctl_buf_data {
 	uint64_t buf_ptr;
 	uint64_t buf_len;
-};
-
-struct tui_alloc_buffer_t {
-	uint64_t pa; // pa or sfd
-	uint64_t ffa_handle; // unused
-	struct dma_buf *dma_buf;
 };
 
 /* Command IDs */
@@ -142,12 +107,7 @@ struct tui_alloc_buffer_t {
 #define MITEE_TUI_ERROR               1
 #define MITEE_TUI_ERR_UNKNOWN_CMD     2
 
-void hal_get_fb_buffer(struct tui_alloc_buffer_t **buffer);
-
-extern int tpd_enter_tui(void);
-extern int tpd_exit_tui(void);
-extern enum tpd_vendor_id_t tpd_tui_get_vendor_id(void);
-extern void mitee_rpc_register_callback(uint32_t module_id, uint32_t cmd,
-	uint32_t (*callback)(struct optee_msg_param_value *value, void *buf, uint32_t size_in, uint32_t *size_out));
+int mitee_tui_init(void);
+void mitee_tui_exit(void);
 
 #endif /* MITEE_TUI_H */

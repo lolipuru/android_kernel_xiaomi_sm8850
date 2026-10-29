@@ -7,35 +7,39 @@
 #ifndef __TUI_SHM_H__
 #define __TUI_SHM_H__
 
-#define TUI_SHM_MAPPED         BIT(0) /* Memory mapped by the kernel */
-#define TUI_SHM_USER_MAPPED    BIT(1) /* Memory mapped in user space */
-#define TUI_SHM_KERNEL_MAPPED  BIT(2) /* Memory mapped in kernel space */
+#include <linux/refcount.h>
+#include <linux/types.h>
+
 #define TUI_SHM_NAME_LENTH     16
 
+struct file;
+
+/* TUI_IO_ALLOC_SHM and TUI_IO_FREE_SHM argument */
 struct tui_ioctl_alloc_shm_data {
 	uint8_t name[TUI_SHM_NAME_LENTH];
 	uint64_t size;
-	uint32_t flags;
+	uint32_t flags;	/* must be 0 */
 	int32_t id;
 	int32_t fd;
 };
 
+/*
+ * Buffer shared between the TUI service (through an mmap()ed fd) and the
+ * kernel (through its id). It is freed once both have let go of it.
+ */
 struct tui_shm {
 	uint8_t name[TUI_SHM_NAME_LENTH];
-	int fd;
 	int id;
 	void *vaddr;
 	size_t size;
-	uint32_t flags;
 	refcount_t refcount;
 };
 
-extern int tui_shm_init(void);
-extern int tui_shm_deinit(void);
-extern struct tui_shm *tui_shm_alloc(size_t size, u32 flags);
-extern void tui_shm_free(struct tui_shm *shm);
-extern int tui_shm_create_fd(uint8_t *name, struct tui_shm *shm);
-extern void tui_shm_delete_fd(uint8_t *name, int fd);
-extern struct tui_shm *tui_shm_get_data_byid(int id);
+void tui_shm_deinit(void);
+struct tui_shm *tui_shm_alloc(size_t size, const uint8_t *name);
+struct file *tui_shm_get_file(struct tui_shm *shm);
+struct tui_shm *tui_shm_get_by_id(int id);
+void tui_shm_remove(struct tui_shm *shm);
+void tui_shm_put(struct tui_shm *shm);
 
-#endif //  __TUI_SHM_H__
+#endif /* __TUI_SHM_H__ */

@@ -32,6 +32,7 @@
 #include "dynamic_mem.h"
 #include "mitee_task.h"
 #include "tee_bench.h"
+#include "../tui/mitee_tui.h"
 
 /*
  * This file implement the core API of mitee.
@@ -229,6 +230,9 @@ static int mitee_parse_dts(struct optee *optee)
 	if (of_property_read_u32(dev_node, MITEE_WORKER_COUNT,
 				 &optee->workers_count) || !optee->workers_count)
 		optee->workers_count = 1;
+
+	optee->tui_supported = of_property_read_bool(dev_node,
+						     MITEE_TUI_SUPPORTED);
 
 	/* check if user has manually changed workers_count */
 	if (workers_count != -1) {
@@ -1012,6 +1016,15 @@ static int mitee_core_init(void)
 	optee_bm_enable();
 	mitee_bench_enable();
 
+	/* the TEE is usable without the trusted UI */
+	if (optee->tui_supported) {
+		rc = mitee_tui_init();
+		if (rc) {
+			pr_err("tui init failed: %d\n", rc);
+			optee->tui_supported = false;
+		}
+	}
+
 	pr_info("initialized driver succ\n");
 	return 0;
 
@@ -1062,6 +1075,9 @@ static void optee_core_exit(void)
 	pr_info("enter\n");
 	struct optee *optee = get_optee_drv_state();
 	u32 cnt = 0;
+
+	if (optee->tui_supported)
+		mitee_tui_exit();
 
 	optee_remove_common(optee);
 	mutex_destroy(&tee_mutex);

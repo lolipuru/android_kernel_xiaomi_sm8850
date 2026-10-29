@@ -34,6 +34,10 @@ def register_modules(registry):
             "drivers/tee/mitee/mitee/tee/tee_private.h",
             "drivers/tee/mitee/mitee/tee/tee_shm.c",
             "drivers/tee/mitee/mitee/tee/tee_shm_pool.c",
+            "drivers/tee/mitee/tui/mitee_tui.c",
+            "drivers/tee/mitee/tui/mitee_tui.h",
+            "drivers/tee/mitee/tui/tui_shm.c",
+            "drivers/tee/mitee/tui/tui_shm.h",
         ],
         deps = [
             # do not sort

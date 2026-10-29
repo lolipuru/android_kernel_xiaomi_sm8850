@@ -45,6 +45,7 @@
 #define MITEE_COMPATIBLE "xiaomi,mitee"
 #define MITEE_CORE_ID "binding-core"
 #define MITEE_WORKER_COUNT "worker-count"
+#define MITEE_TUI_SUPPORTED "tui-supported"
 
 struct optee_call_waiter {
 	struct list_head list_node;
@@ -179,6 +180,7 @@ struct mitee_worker {
  * @workers_run		number of running mitee worker
  * @workers_wq		waitqueue of mitee workers
  * @mitee_worker	mitee workers
+ * @tui_supported	the trusted UI relay is set up
  */
 struct optee {
 	struct tee_device *supp_teedev;
@@ -205,6 +207,7 @@ struct optee {
 	atomic_t        workers_run;
 	u32    workers_count;
 	struct mitee_worker *workers;
+	bool tui_supported;
 };
 
 struct optee_session {

@@ -41,8 +41,8 @@ static struct poweroff_reason reasons[] = {
 	{}
 };
 
-#define RESTART_REASON_PANIC  8
-#define RESTART_REASON_NORMAL 9
+#define RESTART_REASON_PANIC  6
+#define RESTART_REASON_NORMAL 7
 #define RESTART_REASON_EIO 3
 
 static int qcom_reboot_reason_reboot(struct notifier_block *this,

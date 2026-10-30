@@ -1,3 +1,4 @@
+load(":drivers/misc/dio_dma_mapper/modules.bzl", register_dio_dma_mapper = "register_modules")
 load(":drivers/misc/isl97900_led/modules.bzl", register_isl97900_led = "register_modules")
 load(":drivers/misc/lkdtm/modules.bzl", register_lkdtm = "register_modules")
 load(":drivers/misc/hwid/modules.bzl", register_hwid = "register_modules")
@@ -8,6 +9,7 @@ def register_modules(registry):
     register_hwid(registry)
     register_miev(registry)
     register_isl97900_led(registry)
+    register_dio_dma_mapper(registry)
 
     registry.register(
         name = "drivers/misc/qseecom_proxy",

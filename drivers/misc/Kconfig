@@ -105,4 +105,5 @@ config SLG4DC_SIGNAL_IC
 
 source "$(KCONFIG_EXT_PREFIX)drivers/misc/hwid/Kconfig"
 source "$(KCONFIG_EXT_PREFIX)drivers/misc/miev/Kconfig"
+source "$(KCONFIG_EXT_PREFIX)drivers/misc/dio_dma_mapper/Kconfig"
 endmenu

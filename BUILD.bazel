@@ -192,6 +192,17 @@ ddk_headers(
     visibility = ["//visibility:public"],
 )
 
+ddk_headers(
+    name = "hwid_headers",
+    hdrs = [
+        "drivers/misc/hwid/hwid.h",
+    ],
+    includes = [
+        "drivers/misc/hwid",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 ddk_uapi_headers(
     name = "msm_uapi_headers",
     srcs = glob(["include/uapi/**/*.h"]),

@@ -7,6 +7,8 @@ build.config.msm.bengal
 build.config.msm.lahaina
 build.config.msm.monaco
 build.config.msm.pudding
+build.config.msm.pandora
+build.config.msm.popsicle
 build.config.msm.myron
 build.config.msm.seraph
 build.config.msm.seraph.vm

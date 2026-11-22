@@ -11,6 +11,8 @@ targets = [
     "malabar",
     "monaco",
     "pudding",
+    "pandora",
+    "popsicle",
     "myron",
     "seraph",
     "shikra",

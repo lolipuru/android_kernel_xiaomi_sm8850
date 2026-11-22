@@ -22,6 +22,8 @@ load(
 )
 load(":kleaf-scripts/targets/canoe_vms.bzl", "define_canoe_vms")
 load(":kleaf-scripts/targets/pudding.bzl", "define_pudding")
+load(":kleaf-scripts/targets/pandora.bzl", "define_pandora")
+load(":kleaf-scripts/targets/popsicle.bzl", "define_popsicle")
 load(":kleaf-scripts/targets/myron.bzl", "define_myron")
 load(":kleaf-scripts/targets/glymur.bzl", "define_glymur")
 load(":kleaf-scripts/targets/hamoa.bzl", "define_hamoa")
@@ -369,6 +371,10 @@ label_flag(
 define_canoe()
 
 define_pudding()
+
+define_pandora()
+
+define_popsicle()
 
 define_myron()
 

@@ -64,7 +64,7 @@ enum PARAMS_T {
 	PARAMS_T_OFFSET,
 	PARAMS_T_MAX,
 };
-#define FOD_PARA_MAX_GROUP 20
+#define FOD_PARA_MAX_GROUP 35
 enum fod_para_ele {
 	FOD_PARA_TYPE = 0,
 	FOD_PARA_LENGTH,

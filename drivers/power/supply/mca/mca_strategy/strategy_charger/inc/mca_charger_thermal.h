@@ -58,6 +58,7 @@ enum mca_wireless_thermal_mode_ele {
 	THERMAL_MODE_WIRELESS_AUTHEN_80W,
 	THERMAL_MODE_WIRELESS_AUTHEN_VOICE_BOX,
 	THERMAL_MODE_WIRELESS_AUTHEN_MAGNET_30W,
+	THERMAL_MODE_WIRELESS_AUTHEN_XIAOMI_CAR,
 	THERMAL_MODE_WIRELESS_MAX,
 };
 
@@ -85,6 +86,7 @@ struct mca_wireless_thermal_data {
 	int wireless_authen_80w;
 	int wireless_authen_voice_box;
 	int wireless_authen_magnet_30w;
+	int wireless_authen_xiaomi_car;
 };
 
 struct mca_thermal_ctrl_info {

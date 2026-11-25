@@ -71,14 +71,14 @@ static void mca_wireless_charger_thermal_handle_limit(
 	if (!ctrl->voter_ok)
 		return;
 
+	thermal_level = info->smartchg_data.wls_super_sts ?
+				ctrl->quickchg_limit_level :
+				ctrl->limit_level;
+
 	if (thermal_level > ctrl->max_level) {
 		mca_log_err("thermal level invalid\n");
 		return;
 	}
-
-	thermal_level = info->smartchg_data.wls_super_sts ?
-				ctrl->quickchg_limit_level :
-				ctrl->limit_level;
 
 	phone_flag = thermal_level > info->wireless_phone_level ? 1 : 0;
 	mca_strategy_func_process(STRATEGY_FUNC_TYPE_QUICK_WIRELESS,
@@ -99,6 +99,8 @@ static void mca_wireless_charger_thermal_handle_limit(
 		chg_curr[THERMAL_MODE_WIRELESS_AUTHEN_VOICE_BOX] =
 			ctrl->chg_curr;
 		chg_curr[THERMAL_MODE_WIRELESS_AUTHEN_MAGNET_30W] =
+			ctrl->chg_curr;
+		chg_curr[THERMAL_MODE_WIRELESS_AUTHEN_XIAOMI_CAR] =
 			ctrl->chg_curr;
 	} else {
 		th_data = &data[thermal_level - 1].wireless_bpp_in;
@@ -673,7 +675,9 @@ static int mca_wireless_charger_thermal_parse_data(
 			idata[j + THERMAL_MODE_WIRELESS_AUTHEN_VOICE_BOX];
 		data[i].wireless_authen_magnet_30w =
 			idata[j + THERMAL_MODE_WIRELESS_AUTHEN_MAGNET_30W];
-		mca_log_debug("[%s]level-%d %d %d %d %d %d %d %d %d %d %d\n",
+		data[i].wireless_authen_xiaomi_car =
+			idata[j + THERMAL_MODE_WIRELESS_AUTHEN_XIAOMI_CAR];
+		mca_log_debug("[%s]level-%d %d %d %d %d %d %d %d %d %d %d %d\n",
 			      name, i, data[i].wireless_bpp_in,
 			      data[i].wireless_bppqc2_in,
 			      data[i].wireless_bppqc3_in,
@@ -683,7 +687,8 @@ static int mca_wireless_charger_thermal_parse_data(
 			      data[i].wireless_authen_50w,
 			      data[i].wireless_authen_80w,
 			      data[i].wireless_authen_voice_box,
-			      data[i].wireless_authen_magnet_30w);
+			      data[i].wireless_authen_magnet_30w,
+			      data[i].wireless_authen_xiaomi_car);
 	}
 
 	*max_level = len / THERMAL_MODE_WIRELESS_MAX;
@@ -910,6 +915,10 @@ mca_charger_thermal_init_wireless_voter(struct mca_thermal_info *info)
 	info->wireless_voter[THERMAL_MODE_WIRELESS_AUTHEN_MAGNET_30W] =
 		mca_find_votable("wireless_auth_magnet_30w");
 	if (!info->wireless_voter[THERMAL_MODE_WIRELESS_AUTHEN_MAGNET_30W])
+		goto out;
+	info->wireless_voter[THERMAL_MODE_WIRELESS_AUTHEN_XIAOMI_CAR] =
+		mca_find_votable("wireless_auth_xiaomi_car");
+	if (!info->wireless_voter[THERMAL_MODE_WIRELESS_AUTHEN_XIAOMI_CAR])
 		goto out;
 
 	info->wireless_ctrl_info.voter_ok = 1;

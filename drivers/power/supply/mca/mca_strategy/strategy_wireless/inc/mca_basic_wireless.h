@@ -28,6 +28,8 @@
 #define MCA_WLS_CHG_DEFAULT_TX_Q2 27
 #define MCA_WLS_CHG_DEFAULT_TX_Q1 0x15
 #define XIAOMI_TX_UUID_LOW_INDUCTANCE_50W 0x09010A01
+#define XIAOMI_TX_UUID_CAR_1 0x01070E01
+#define XIAOMI_TX_UUID_CAR_2 0x0E0E0205
 #define MCA_WLS_CHG_TX_QLIMIT_FCC_5W 1000
 #define MCA_WLS_CHG_TX_QLIMIT_ICL_5W 400
 #define MCA_WLS_CHG_DEFAULT_DIV2_RX_MAX_IOUT 2650
@@ -411,6 +413,7 @@ struct strategy_wireless_dev {
 	struct mca_votable *auth_80w_voter;
 	struct mca_votable *auth_voice_box_voter;
 	struct mca_votable *auth_magnet_30w_voter;
+	struct mca_votable *auth_xiaomi_car_voter;
 	struct mca_votable *sw_qc_ichg_voter;
 	struct mca_votable *sw_thermal_ichg_voter;
 	struct mca_votable *wls_input_suspend_voter;

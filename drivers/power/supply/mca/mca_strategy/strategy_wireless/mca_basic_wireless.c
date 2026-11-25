@@ -948,6 +948,32 @@ strategy_wireless_set_auth_magnet_30w_ichg(struct mca_votable *votable,
 	return 0;
 }
 
+static int strategy_wireless_set_auth_xiaomi_car(struct mca_votable *votable,
+						 void *data,
+						 int effective_result,
+						 const char *effective_client)
+{
+	struct strategy_wireless_dev *info = data;
+	bool car_tx;
+
+	if (!data)
+		return -1;
+
+	car_tx = info->proc_data.uuid_value == XIAOMI_TX_UUID_CAR_1 ||
+		 info->proc_data.uuid_value == XIAOMI_TX_UUID_CAR_2;
+
+	if (effective_result && car_tx) {
+		mca_vote(info->charge_limit_voter, "wireless_thermal_xiaomi_car",
+			 true, effective_result);
+		mca_vote(info->sw_thermal_ichg_voter, "wireless_thermal", true,
+			 effective_result);
+	} else
+		mca_vote(info->charge_limit_voter, "wireless_thermal_xiaomi_car",
+			 false, 0);
+
+	return 0;
+}
+
 static int strategy_wireless_sw_set_qc_ichg(struct mca_votable *votable,
 					    void *data, int effective_result,
 					    const char *effective_client)
@@ -4755,6 +4781,11 @@ static int strategy_wireless_init_voter(struct strategy_wireless_dev *info)
 		"wireless_auth_magnet_30w", MCA_VOTE_MIN,
 		strategy_wireless_set_auth_magnet_30w_ichg, 15600, info);
 	if (IS_ERR(info->auth_magnet_30w_voter))
+		return -1;
+	info->auth_xiaomi_car_voter = mca_create_votable(
+		"wireless_auth_xiaomi_car", MCA_VOTE_MIN,
+		strategy_wireless_set_auth_xiaomi_car, 15600, info);
+	if (IS_ERR(info->auth_xiaomi_car_voter))
 		return -1;
 	info->sw_qc_ichg_voter = mca_create_votable(
 		"wireless_sw_qc_ich", MCA_VOTE_MIN,

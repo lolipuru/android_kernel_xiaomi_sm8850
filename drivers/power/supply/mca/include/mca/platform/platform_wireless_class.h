@@ -33,6 +33,7 @@ enum wls_chip_vendor {
 	WLS_CHIP_VENDOR_FUDA1665,
 	WLS_CHIP_VENDOR_SC9625,
 	WLS_CHIP_VENDOR_SC96281,
+	WLS_CHIP_VENDOR_NU1671,
 };
 
 struct platform_class_wireless_ops {

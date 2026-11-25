@@ -2574,6 +2574,15 @@ static void strategy_wireless_chg_handler(struct strategy_wireless_dev *info)
 					platform_class_wireless_set_fod_params(
 						WIRELESS_ROLE_MASTER,
 						info->proc_data.auth_data);
+				if (info->project_vendor ==
+				    WLS_CHIP_VENDOR_NU1671) {
+					platform_class_wireless_set_cp_mode(
+						WIRELESS_ROLE_MASTER,
+						FORWARD_2_1_CHARGER_MODE);
+					platform_class_wireless_set_fod_params(
+						WIRELESS_ROLE_MASTER,
+						info->proc_data.auth_data);
+				}
 			}
 
 			if (!info->proc_data.epp)

@@ -50,6 +50,11 @@
 
 #define CONNECTOR_ANTIBURN_WORK_INTERVAL_FAST 1000
 #define CONNECTOR_ANTIBURN_WORK_INTERVAL_NORMAL 5000
+#define ANTIBURN_V2_FORCE_TRIGGER_TEMP 75000
+#define ANTIBURN_V2_HOT_TEMP 55000
+#define ANTIBURN_V2_MIN_TEMP 25000
+#define ANTIBURN_V2_IDLE_LOOPS 5
+#define ANTIBURN_V2_KICK_DELAY 250
 
 #define CONNECTOR_ANTIBURN_TRIGGER_TEMP 65
 #define CONNECTOR_ANTIBURN_RECHARGE_TEMP 55
@@ -128,7 +133,8 @@ static int connector_antiburn_get_temperature(struct connector_antiburn *conn,
 {
 	static bool adc_err_flag;
 	struct thermal_zone_device *tzd;
-	int connector_temp = 25;
+	int connector_temp = conn->support_elaboration ? ANTIBURN_V2_MIN_TEMP :
+							 25;
 	int ret;
 
 	if (index < CONNECTOR_PROP_TEMP_1 || index >= CONNECTOR_PROP_TEMP_MAX) {
@@ -154,6 +160,9 @@ static int connector_antiburn_get_temperature(struct connector_antiburn *conn,
 		adc_err_flag = false;
 		flag_restore = 1;
 	}
+
+	if (conn->support_elaboration)
+		return connector_temp;
 
 	return connector_temp / NTC_SCALE_TEMP;
 }
@@ -389,6 +398,162 @@ static void connector_antiburn_check_status(struct connector_antiburn *conn)
 			CONNECTOR_ANTIBURN_WORK_INTERVAL_NORMAL;
 }
 
+static void connector_antiburn_check_status_v2(struct connector_antiburn *conn)
+{
+	static int not_attached_count;
+	int t0 = conn->temperature[0];
+	int t1 = conn->temperature[1];
+	int hottest = max(t0, t1);
+	int connector_temp = max(hottest, ANTIBURN_V2_MIN_TEMP);
+	int bus_volt = 0;
+	int real_type = XM_CHARGER_TYPE_UNKNOW;
+	int real_type_bc = XM_CHARGER_TYPE_UNKNOW;
+	unsigned int data;
+	bool over_temp;
+
+	protocol_class_pd_get_otg_plugin_status(TYPEC_PORT_0,
+						&conn->otg_plugin_status);
+	platform_class_buckchg_ops_get_online(MAIN_BUCK_CHARGER,
+					      &conn->usb_online);
+	protocol_class_pd_get_cid_status(TYPEC_PORT_0, &conn->cid_status);
+
+	mca_log_info(
+		"connector_temp:%d:%d, temp_increase_rate:%d:%d, triggered:%d, cid_status:%d, otg_plugin_status: %d, usb_online:%d\n",
+		t0, t1, conn->temp_increase_rate[0], conn->temp_increase_rate[1],
+		conn->triggered, conn->cid_status, conn->otg_plugin_status,
+		conn->usb_online);
+
+	over_temp = connector_temp >= conn->trigger_temp ||
+		    (connector_temp >= conn->comb_sensorboard_con_trigger_temp &&
+		     conn->thermal_board_temp <= conn->max_thermal_board_temp) ||
+		    (t0 >= conn->comb_rate_conn_trigger_temp &&
+		     conn->temp_increase_rate[0] >=
+			     conn->max_temp_increase_rate) ||
+		    (t1 >= conn->comb_rate_conn_trigger_temp &&
+		     conn->temp_increase_rate[1] >=
+			     conn->max_temp_increase_rate);
+
+	if ((hottest >= ANTIBURN_V2_FORCE_TRIGGER_TEMP ||
+	     (over_temp && (conn->cid_status || conn->usb_online))) &&
+	    !conn->disable_antiburn && !conn->triggered) {
+		mca_log_err(
+			"triggering antiburn conn->usb_online is %d, conn->otg_plugin_status is %d, conn->cid_status is %d\n",
+			conn->usb_online, conn->otg_plugin_status,
+			conn->cid_status);
+		mca_log_err(
+			"usb_online: %d, otg_plugin_status: %d, conn_therm: %d/%d, temp_increase_rate: %d, thermal_board_temp: %d\n",
+			conn->usb_online, conn->otg_plugin_status, t0, t1,
+			max(conn->temp_increase_rate[0],
+			    conn->temp_increase_rate[1]),
+			conn->thermal_board_temp);
+		conn->triggered = 1;
+		conn->ntc_alarm = 1;
+		connector_temp_uevent(connector_temp * 10);
+		connector_ntc_alarm_uevent(conn->ntc_alarm);
+
+		protocol_class_get_adapter_type(ADAPTER_PROTOCOL_PD,
+						&real_type);
+		protocol_class_get_adapter_type(ADAPTER_PROTOCOL_BC12,
+						&real_type_bc);
+		if (!real_type)
+			real_type = real_type_bc;
+		mca_log_info("real_type:%d\n", real_type);
+
+		if (real_type == XM_CHARGER_TYPE_PD ||
+		    real_type == XM_CHARGER_TYPE_PD_VERIFY ||
+		    real_type == XM_CHARGER_TYPE_PPS) {
+			protocol_class_pd_request_vdm_cmd(
+				TYPEC_PORT_0, USBPD_UVDM_RESET_VSAFE0V, &data,
+				0);
+			msleep(50);
+			mca_event_block_notify(MCA_EVENT_TYPE_HW_INFO,
+					       MCA_EVENT_CONN_ANTIBURN_CHANGE,
+					       NULL);
+			mca_charge_mievent_report(
+				CHARGE_DFX_ANTI_BURN_TRIGGERED, &connector_temp,
+				1);
+			msleep(200);
+			connector_antiburn_ensure_vbus_sense5V(conn);
+			platform_class_buckchg_ops_get_bus_volt(
+				MAIN_BUCK_CHARGER, &bus_volt);
+			if (bus_volt < VBUS_DISABLE_VOLT_UV) {
+				conn->is_reset_vsafe0V = 1;
+				adapter_reset_vsafe0V_uevent(
+					conn->is_reset_vsafe0V);
+			}
+		} else {
+			mca_event_block_notify(MCA_EVENT_TYPE_HW_INFO,
+					       MCA_EVENT_CONN_ANTIBURN_CHANGE,
+					       NULL);
+			mca_charge_mievent_report(
+				CHARGE_DFX_ANTI_BURN_TRIGGERED, &connector_temp,
+				1);
+			msleep(200);
+			connector_antiburn_ensure_vbus_sense5V(conn);
+		}
+
+		if (conn->otg_plugin_status)
+			platform_class_buckchg_ops_set_boost_enable(
+				MAIN_BUCK_CHARGER,
+				(conn->en_src << 16) |
+					(conn->otg_boost_src << 8));
+
+		if (conn->support_hw_antiburn) {
+			gpiod_direction_output_raw(
+				gpio_to_desc(conn->mos_ctrl_gpio), 1);
+			mca_log_err("triggering hw anti burn\n");
+			msleep(50);
+			platform_class_buckchg_ops_get_bus_volt(
+				MAIN_BUCK_CHARGER, &bus_volt);
+			if (bus_volt >= VBUS_UV_THRESHOLD)
+				mca_charge_mievent_report(
+					CHARGE_DFX_ANTIBURN_ERR, NULL, 0);
+		}
+	} else if (t0 < conn->recharge_temp &&
+		   conn->temp_increase_rate[0] < conn->max_temp_increase_rate &&
+		   t1 < conn->recharge_temp &&
+		   conn->temp_increase_rate[1] < conn->max_temp_increase_rate &&
+		   conn->triggered && !conn->otg_plugin_status &&
+		   !conn->cid_status) {
+		conn->triggered = 0;
+		conn->is_reset_vsafe0V = 0;
+		mca_log_err(
+			"recovery antiburn conn->usb_online is %d, conn->otg_plugin_status is %d, conn->cid_status is %d\n",
+			conn->usb_online, conn->otg_plugin_status,
+			conn->cid_status);
+		connector_temp_uevent(connector_temp * 10);
+		adapter_reset_vsafe0V_uevent(conn->is_reset_vsafe0V);
+		if (conn->support_hw_antiburn) {
+			gpiod_direction_output_raw(
+				gpio_to_desc(conn->mos_ctrl_gpio), 0);
+			mca_log_err("close hw anti burn\n");
+		}
+		mca_event_block_notify(MCA_EVENT_TYPE_HW_INFO,
+				       MCA_EVENT_CONN_ANTIBURN_CHANGE, NULL);
+		mca_charge_mievent_set_state(MIEVENT_STATE_END,
+					     CHARGE_DFX_ANTI_BURN_TRIGGERED);
+	}
+
+	if (conn->ntc_alarm == 1 && conn->cid_status == 0) {
+		conn->ntc_alarm = 0;
+		connector_temp_uevent(connector_temp * 10);
+		connector_ntc_alarm_uevent(conn->ntc_alarm);
+	}
+
+	/* stay fast while anything is attached or hot, slow down when idle */
+	if (conn->otg_plugin_status || conn->usb_online == 1 ||
+	    conn->cid_status || t0 >= ANTIBURN_V2_HOT_TEMP ||
+	    t1 >= ANTIBURN_V2_HOT_TEMP) {
+		not_attached_count = 0;
+		conn->monitor_interval = CONNECTOR_ANTIBURN_WORK_INTERVAL_FAST;
+	} else if (not_attached_count++ >= ANTIBURN_V2_IDLE_LOOPS) {
+		conn->monitor_interval =
+			CONNECTOR_ANTIBURN_WORK_INTERVAL_NORMAL;
+	} else {
+		conn->monitor_interval = CONNECTOR_ANTIBURN_WORK_INTERVAL_FAST;
+	}
+}
+
 static void connector_antiburn_monitor_workfunc(struct work_struct *work)
 {
 	struct connector_antiburn *conn = container_of(
@@ -400,7 +565,10 @@ static void connector_antiburn_monitor_workfunc(struct work_struct *work)
 		conn->temperature[i] =
 			connector_antiburn_get_temperature(conn, i);
 	connector_antiburn_get_temp_increase_rate(conn);
-	connector_antiburn_check_status(conn);
+	if (conn->support_elaboration)
+		connector_antiburn_check_status_v2(conn);
+	else
+		connector_antiburn_check_status(conn);
 
 	mca_queue_delayed_work(&conn->monitor_work, msecs_to_jiffies(interval));
 }
@@ -447,11 +615,16 @@ static int connector_antiburn_gpio_init(struct connector_antiburn *conn)
 static void connector_antiburn_parse_dt(struct connector_antiburn *conn)
 {
 	struct device_node *np = conn->dev->of_node;
+	int scale;
+
+	mca_parse_dts_u32(np, "support_elaboration_anti_strategy",
+			  &conn->support_elaboration, 0);
+	scale = conn->support_elaboration ? NTC_SCALE_TEMP : 1;
 
 	mca_parse_dts_u32(np, "trigger_temp", &conn->trigger_temp,
-			  CONNECTOR_ANTIBURN_TRIGGER_TEMP);
+			  CONNECTOR_ANTIBURN_TRIGGER_TEMP * scale);
 	mca_parse_dts_u32(np, "recharge_temp", &conn->recharge_temp,
-			  CONNECTOR_ANTIBURN_RECHARGE_TEMP);
+			  CONNECTOR_ANTIBURN_RECHARGE_TEMP * scale);
 	mca_parse_dts_u32(np, "support_soft_antiburn",
 			  &conn->support_soft_antiburn, 1);
 	mca_parse_dts_u32(np, "support_hw_antiburn", &conn->support_hw_antiburn,
@@ -462,17 +635,17 @@ static void connector_antiburn_parse_dt(struct connector_antiburn *conn)
 			  CONNECTOR_ANTIBURN_WORK_INTERVAL_FAST);
 	mca_parse_dts_u32(np, "max_temp_increase_rate",
 			  &conn->max_temp_increase_rate,
-			  CONNECTOR_ANTIBURN_TEMPERATURE_INCREASE_RATE);
+			  CONNECTOR_ANTIBURN_TEMPERATURE_INCREASE_RATE * scale);
 	mca_parse_dts_string(np, "thermal-zone-name", &conn->thermal_zone_name);
 	mca_parse_dts_string(np, "thermal-zone-name2",
 			     &conn->thermal_zone_name2);
 	mca_parse_dts_u32(
 		np, "comb_sensorboard_con_trigger_temp",
 		&conn->comb_sensorboard_con_trigger_temp,
-		COMBINED_SENSOR_BOARD_CONNECTOR_ANTIBURN_TRIGGER_TEMP);
+		COMBINED_SENSOR_BOARD_CONNECTOR_ANTIBURN_TRIGGER_TEMP * scale);
 	mca_parse_dts_u32(np, "comb_rate_conn_trigger_temp",
 			  &conn->comb_rate_conn_trigger_temp,
-			  COMBINED_RATE_CONNECTOR_ANTIBURN_TRIGGER_TEMP);
+			  COMBINED_RATE_CONNECTOR_ANTIBURN_TRIGGER_TEMP * scale);
 	mca_parse_dts_u32(np, "max_thermal_board_temp",
 			  &conn->max_thermal_board_temp,
 			  THERMAL_SENSOR_BOARD_TRIGGER_TEMP);
@@ -638,6 +811,32 @@ static int connector_antiburn_thermal_notifier_event(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+static int connector_antiburn_connect_cb(struct notifier_block *nb,
+					 unsigned long event, void *data)
+{
+	struct connector_antiburn *conn =
+		container_of(nb, struct connector_antiburn, connect_nb);
+
+	if (!conn->support_elaboration)
+		return 0;
+
+	if (conn->monitor_interval == CONNECTOR_ANTIBURN_WORK_INTERVAL_FAST) {
+		mca_log_info(
+			"usb connect, monitor_work already quick, return...\n");
+		return 0;
+	}
+
+	if (event != MCA_EVENT_USB_CONNECT)
+		return 0;
+
+	mca_log_info("usb connect, run monitor_work now\n");
+	cancel_delayed_work_sync(&conn->monitor_work);
+	mca_queue_delayed_work(&conn->monitor_work, ANTIBURN_V2_KICK_DELAY);
+	conn->monitor_interval = CONNECTOR_ANTIBURN_WORK_INTERVAL_FAST;
+
+	return 0;
+}
+
 static int connector_antiburn_debug_notifier_cb(struct notifier_block *nb,
 						unsigned long chg_event,
 						void *val)
@@ -752,6 +951,9 @@ static int connector_antiburn_probe(struct platform_device *pdev)
 	conn->debug_nb.notifier_call = connector_antiburn_debug_notifier_cb;
 	mca_event_block_notify_register(MCA_EVENT_TYPE_SUBPMIC_INFO,
 					&conn->debug_nb);
+	conn->connect_nb.notifier_call = connector_antiburn_connect_cb;
+	mca_event_block_notify_register(MCA_EVENT_TYPE_CHARGER_CONNECT,
+					&conn->connect_nb);
 
 	INIT_DELAYED_WORK(&conn->monitor_work,
 			  connector_antiburn_monitor_workfunc);
@@ -792,6 +994,8 @@ static void connector_antiburn_remove(struct platform_device *pdev)
 
 	mca_event_block_notify_unregister(MCA_EVENT_TYPE_THERMAL_TEMP,
 					  &conn->thermal_board_nb);
+	mca_event_block_notify_unregister(MCA_EVENT_TYPE_CHARGER_CONNECT,
+					  &conn->connect_nb);
 	devm_kfree(&pdev->dev, conn);
 }
 

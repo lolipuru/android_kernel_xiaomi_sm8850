@@ -35,6 +35,7 @@ struct connector_antiburn {
 	struct thermal_zone_device *tzd_conn2;
 	struct notifier_block thermal_board_nb;
 	struct notifier_block debug_nb;
+	struct notifier_block connect_nb;
 	int triggered;
 	int is_reset_vsafe0V;
 	int ntc_alarm;
@@ -63,6 +64,7 @@ struct connector_antiburn {
 	int en_src;
 	int support_base_flip;
 	int disable_antiburn;
+	int support_elaboration;
 
 	struct delayed_work monitor_work;
 };

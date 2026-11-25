@@ -44,6 +44,28 @@ def register_modules(registry):
     )
 
     registry.register(
+        name = "drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1671/nuvolta_1671",
+        out = "nuvolta_1671.ko",
+        config = "CONFIG_MCA_EXTERNAL_WIRELESS_NU1671",
+        srcs = [
+            # do not sort
+            "drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1671/inc/fw_update_nu1671.h",
+            "drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1671/inc/nuvolta_1671.h",
+            "drivers/power/supply/mca/mca_hardware_ic/wireless_ic/nuvolta_1671/nuvolta_1671.c",
+        ],
+        includes = ["drivers/power/supply/mca/include"],
+        deps = [
+            # do not sort
+            "drivers/power/supply/mca/mca_common/mca_event",
+            "drivers/power/supply/mca/mca_common/mca_log",
+            "drivers/power/supply/mca/mca_common/mca_hwid",
+            "drivers/power/supply/mca/mca_platform/mca_platform_wireless_class",
+            "drivers/power/supply/mca/mca_common/mca_parse_dts",
+            "drivers/power/supply/mca/mca_strategy/mca_strategy_class",
+        ],
+    )
+
+    registry.register(
         name = "drivers/power/supply/mca/mca_hardware_ic/wireless_ic/sc96281/sc96281_comp",
         out = "sc96281_comp.ko",
         config = "CONFIG_MCA_EXTERNAL_WIRELESS_SC96281",

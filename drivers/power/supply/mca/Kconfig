@@ -28,6 +28,9 @@ config MCA_EXTERNAL_WIRELESS
 config MCA_EXTERNAL_WIRELESS_SC96281
 	tristate "MCA SC96281 wireless charging IC support"
 
+config MCA_EXTERNAL_WIRELESS_NU1671
+	tristate "MCA Nuvolta NU1671 wireless charging IC support"
+
 config MCA_EXTERNAL_LOADSWITCH
 	tristate "MCA external load switch IC support"
 

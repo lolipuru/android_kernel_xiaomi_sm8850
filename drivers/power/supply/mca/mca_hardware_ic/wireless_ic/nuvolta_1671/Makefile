@@ -1,0 +1,1 @@
+obj-$(CONFIG_MCA_EXTERNAL_WIRELESS_NU1671)	+= nuvolta_1671.o

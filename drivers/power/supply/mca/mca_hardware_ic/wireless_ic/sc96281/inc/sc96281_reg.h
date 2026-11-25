@@ -70,8 +70,18 @@ enum fod_para_ele {
 	FOD_PARA_LENGTH,
 	FOD_PARA_UUID,
 	FOD_PARA_PARAMS,
+	FOD_PARA_PARAMS_MAG,
+	FOD_PARA_PARAMS_MAG_THICK,
 	FOD_PARA_MAX,
 };
+
+enum fod_params_set {
+	FOD_PARAMS_SET_NORMAL = 0,
+	FOD_PARAMS_SET_MAG,
+	FOD_PARAMS_SET_MAG_THICK,
+};
+
+#define SC96281_CP_MODE_2_1 2
 
 enum wls_work_mode {
 	RX_MODE,
@@ -368,6 +378,8 @@ typedef struct fod_params_t {
 	uint8_t length;
 	int uuid;
 	fod_type_t params[DEFAULT_FOD_PARAM_LEN];
+	fod_type_t params_mag[DEFAULT_FOD_PARAM_LEN];
+	fod_type_t params_mag_thick[DEFAULT_FOD_PARAM_LEN];
 } fod_params_t;
 
 typedef struct fw_params_t {
@@ -754,12 +766,13 @@ struct sc96281 {
 	int power_good_gpio;
 	int power_good_irq;
 	int enable_gpio;
-	int hall_int_gpio;
-	int hall_int_irq;
+	int hall_n_int_gpio;
+	int hall_n_int_irq;
+	int hall_s_int_gpio;
+	int hall_s_int_irq;
 	//pinctrl
 	struct pinctrl *sc96281_pinctrl;
 	struct pinctrl_state *pinctrl_stat;
-	struct pinctrl_state *pinctrl_stat_hall;
 	//fw_bin
 	bool fw_program;
 	char *fw_upgrade_fail_info;
@@ -777,6 +790,8 @@ struct sc96281 {
 	//fw
 	int fw_data_size;
 	int fod_params_size;
+	int fod_params_2_1_size;
+	int cp_mode;
 	unsigned char *fw_data_ptr;
 	fw_params_t *wls_fw_data;
 	// fw_bin
@@ -785,6 +800,7 @@ struct sc96281 {
 	// fod & debug_fod
 	fod_params_t fod_params[FOD_PARA_MAX_GROUP];
 	fod_params_t fod_params_default;
+	fod_params_t fod_params_2_1[FOD_PARA_MAX_GROUP];
 	uint8_t wls_debug_one_fod_index;
 	int wls_debug_set_fod_type;
 	fod_type_t wls_debug_one_fod_param;
@@ -804,6 +820,8 @@ struct sc96281 {
 
 	//hall related
 	bool magnetic_case_flag;
+	bool hall_n_status;
+	bool hall_s_status;
     int phone_case_category;
 	bool hall_gpio_status;
 

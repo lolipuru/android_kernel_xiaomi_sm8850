@@ -648,14 +648,26 @@ __maybe_unused int sc96281_rx_config_epp_fod(struct sc96281 *sc,
 	return ret;
 }
 
-int sc96281_set_fod(struct sc96281 *sc, fod_params_t *fod_params)
+static fod_type_t *sc96281_fod_set_params(fod_params_t *fod_params, int set)
 {
+	switch (set) {
+	case FOD_PARAMS_SET_MAG:
+		return fod_params->params_mag;
+	case FOD_PARAMS_SET_MAG_THICK:
+		return fod_params->params_mag_thick;
+	default:
+		return fod_params->params;
+	}
+}
+
+int sc96281_set_fod(struct sc96281 *sc, fod_params_t *fod_params, int set)
+{
+	fod_type_t *params = sc96281_fod_set_params(fod_params, set);
 	int ret = 0;
 
-	ret = write_cust(sc, cust_rx.bpp_fod, fod_params->params);
+	ret = write_cust(sc, cust_rx.bpp_fod, params);
 	ret |= write_cust(sc, cust_rx.epp_fod,
-			  (uint8_t *)fod_params->params +
-				  sizeof(cust_rx.bpp_fod));
+			  (uint8_t *)params + sizeof(cust_rx.bpp_fod));
 	ret |= sc96281_rx_set_cust_cmd(sc, CUST_CMD_FOD_16_SEGMENT);
 	if (ret)
 		mca_log_err("sc96281 set 16-segment fod fail\n");
@@ -1620,11 +1632,36 @@ static int sc96281_get_tx_uuid(u8 *uuid, void *data)
 	return 0;
 }
 
+static int sc96281_get_fod_set(struct sc96281 *chip)
+{
+	if (!chip->support_hall)
+		return FOD_PARAMS_SET_NORMAL;
+
+	if (chip->hall_n_status)
+		return chip->hall_s_status ? FOD_PARAMS_SET_NORMAL :
+					     FOD_PARAMS_SET_MAG;
+
+	return FOD_PARAMS_SET_MAG_THICK;
+}
+
+static void sc96281_apply_fod(struct sc96281 *chip, fod_params_t *fod_params,
+			      int set)
+{
+	fod_type_t *params = sc96281_fod_set_params(fod_params, set);
+	int j;
+
+	for (j = 0; j < fod_params->length && j < DEFAULT_FOD_PARAM_LEN; j++)
+		mca_log_info("fod gain:%d offset:%d\n", params[j].gain,
+			     params[j].offset);
+
+	sc96281_set_fod(chip, fod_params, set);
+}
+
 static int sc96281_set_fod_params(int value, void *data)
 {
 	struct sc96281 *chip = (struct sc96281 *)data;
-	int uuid = 0, i = 0, j = 0;
-	bool found = true;
+	int set = sc96281_get_fod_set(chip);
+	int uuid = 0, i = 0;
 
 	uuid |= chip->proc_data.uuid[0] << 24;
 	uuid |= chip->proc_data.uuid[1] << 16;
@@ -1634,30 +1671,36 @@ static int sc96281_set_fod_params(int value, void *data)
 		     chip->proc_data.uuid[1], chip->proc_data.uuid[2],
 		     chip->proc_data.uuid[3]);
 
-	for (i = 0; i < chip->fod_params_size; i++) {
-		found = true;
-		if (uuid != chip->fod_params[i].uuid) {
-			found = false;
-			continue;
-		}
-		/* found fod by uuid */
-		if (found) {
-			mca_log_info("found fod params\n");
-			for (j = 0; j < chip->fod_params[i].length; j++) {
-				mca_log_info(
-					"fod gain:%d offset:%d\n",
-					chip->fod_params[i].params[j].gain,
-					chip->fod_params[i].params[j].offset);
-			}
-			sc96281_set_fod(chip, &chip->fod_params[i]);
+	if (chip->cp_mode == SC96281_CP_MODE_2_1) {
+		for (i = 0; i < chip->fod_params_2_1_size; i++) {
+			if (uuid != chip->fod_params_2_1[i].uuid)
+				continue;
+			mca_log_info("found 2_1 fod params\n");
+			sc96281_apply_fod(chip, &chip->fod_params_2_1[i], set);
 			return 0;
 		}
 	}
 
-	if (!found) {
-		mca_log_info("can not found fod params, use default fod\n");
-		sc96281_set_fod(chip, &chip->fod_params_default);
+	for (i = 0; i < chip->fod_params_size; i++) {
+		if (uuid != chip->fod_params[i].uuid)
+			continue;
+		mca_log_info("found fod params\n");
+		sc96281_apply_fod(chip, &chip->fod_params[i], set);
+		return 0;
 	}
+
+	mca_log_info("can not found fod params, use default fod\n");
+	sc96281_set_fod(chip, &chip->fod_params_default, set);
+
+	return 0;
+}
+
+static int sc96281_set_cp_mode(int mode, void *data)
+{
+	struct sc96281 *chip = (struct sc96281 *)data;
+
+	mca_log_info("set cp_mode %d\n", mode);
+	chip->cp_mode = mode;
 
 	return 0;
 }
@@ -1685,7 +1728,7 @@ static int sc96281_set_debug_fod_params(void *data)
 			fod_params.params[i].offset =
 				chip->wls_debug_all_fod_params->params[i].offset;
 		}
-		sc96281_set_fod(chip, &fod_params);
+		sc96281_set_fod(chip, &fod_params, FOD_PARAMS_SET_NORMAL);
 		return 0;
 	}
 
@@ -1731,7 +1774,8 @@ static int sc96281_set_debug_fod_params(void *data)
 				chip->fod_params[i].params[index].offset =
 					chip->wls_debug_one_fod_param.offset;
 			}
-			sc96281_set_fod(chip, &chip->fod_params[i]);
+			sc96281_set_fod(chip, &chip->fod_params[i],
+					FOD_PARAMS_SET_NORMAL);
 			return 0;
 		}
 	}
@@ -1760,7 +1804,8 @@ static int sc96281_set_debug_fod_params(void *data)
 			chip->fod_params_default.params[index].offset =
 				chip->wls_debug_one_fod_param.offset;
 		}
-		sc96281_set_fod(chip, &chip->fod_params_default);
+		sc96281_set_fod(chip, &chip->fod_params_default,
+				FOD_PARAMS_SET_NORMAL);
 	}
 	/*
     else if (((chip->proc_data.adapter_type == ADAPTER_QC3) || (chip->proc_data.adapter_type == ADAPTER_PD)) &&
@@ -2834,6 +2879,7 @@ static struct platform_class_wireless_ops sc96281_wls_ops = {
 	.wls_receive_test_cmd = sc96281_rcv_product_test_cmd,
 	.wls_process_factory_cmd = sc96281_process_factory_cmd,
 	.wls_get_hall_gpio_status = sc96281_get_hall_gpio_status,
+	.wls_set_cp_mode = sc96281_set_cp_mode,
 	.wls_enable_vsys_ctrl = sc96281_enable_vsys_ctrl,
 	.wls_get_trx_isense = sc96281_get_trx_isense,
 	.wls_get_trx_vrect = sc96281_get_trx_vrect,
@@ -3022,40 +3068,36 @@ static void sc96281_hall_interrupt_work(struct work_struct *work)
 		container_of(work, struct sc96281, hall_interrupt_work.work);
 	char event[MCA_EVENT_NOTIFY_SIZE] = { 0 };
 	struct mca_event_notify_data event_data;
-	int ret = 0;
+	bool attached;
 	int len;
 
-	if (gpio_is_valid(chip->hall_int_gpio)) {
-		ret = gpio_get_value(chip->hall_int_gpio);
-		if (!ret) {
-			if (chip->magnetic_case_flag) {
-				mca_log_info(
-					"magnetic_case_flag is already attached\n");
-				return;
-			}
-			mca_log_info(
-				"hall_interrupt low, magnetic_case attached\n");
-			chip->hall_gpio_status = false;
-			chip->magnetic_case_flag = true;
-		} else {
-			mca_log_info(
-				"hall_interrupt high, magnetic_case detached\n");
-			chip->magnetic_case_flag = false;
-			chip->hall_gpio_status = true;
-		}
+	if (gpio_is_valid(chip->hall_n_int_gpio))
+		chip->hall_n_status = !!gpio_get_value(chip->hall_n_int_gpio);
+	if (gpio_is_valid(chip->hall_s_int_gpio))
+		chip->hall_s_status = !!gpio_get_value(chip->hall_s_int_gpio);
+	mca_log_info("hall interrupt, n: %d, s: %d\n", chip->hall_n_status,
+		     chip->hall_s_status);
 
-		mca_log_info("report hall!!\n");
-		mca_strategy_func_process(STRATEGY_FUNC_TYPE_BASIC_WIRELESS,
-					  MCA_EVENT_WIRELESS_MAGNETIC_CASE_INT,
-					  chip->magnetic_case_flag);
-
-		len = snprintf(event, MCA_EVENT_NOTIFY_SIZE,
-			       "POWER_SUPPLY_WLS_HALL=%d",
-			       chip->magnetic_case_flag);
-		event_data.event = event;
-		event_data.event_len = len;
-		mca_event_report_uevent(&event_data);
+	/* both halls idle high, either one low means a magnetic case */
+	attached = !(chip->hall_n_status && chip->hall_s_status);
+	chip->hall_gpio_status = !attached;
+	if (attached == chip->magnetic_case_flag) {
+		mca_log_info("magnetic case already %s\n",
+			     attached ? "attached" : "detached");
+		return;
 	}
+
+	chip->magnetic_case_flag = attached;
+	mca_log_info("magnetic case %s\n", attached ? "attached" : "detached");
+	mca_strategy_func_process(STRATEGY_FUNC_TYPE_BASIC_WIRELESS,
+				  MCA_EVENT_WIRELESS_MAGNETIC_CASE_INT,
+				  chip->magnetic_case_flag);
+
+	len = snprintf(event, MCA_EVENT_NOTIFY_SIZE, "POWER_SUPPLY_WLS_HALL=%d",
+		       chip->magnetic_case_flag);
+	event_data.event = event;
+	event_data.event_len = len;
+	mca_event_report_uevent(&event_data);
 }
 
 static irqreturn_t sc96281_hall_interrupt_handler(int irq, void *dev_id)
@@ -3104,47 +3146,54 @@ static int sc96281_parse_params(struct device_node *node, const char *name,
 	return 0;
 }
 
-static int sc96281_parse_fod_params(struct device_node *node,
-				    struct sc96281 *info)
+static int sc96281_parse_fod_params(struct device_node *node, const char *prop,
+				    fod_params_t *fod_params, int *size)
 {
 	int array_len, row, col, i;
 	const char *tmp_string = NULL;
 
-	array_len = mca_parse_dts_count_strings(
-		node, "fod_params", FOD_PARA_MAX_GROUP, FOD_PARA_MAX);
+	array_len = mca_parse_dts_count_strings(node, prop, FOD_PARA_MAX_GROUP,
+						FOD_PARA_MAX);
 	if (array_len < 0) {
-		mca_log_err("parse fod_params failed\n");
+		mca_log_err("parse %s failed\n", prop);
 		return -1;
 	}
 
-	info->fod_params_size = array_len / FOD_PARA_MAX;
+	*size = array_len / FOD_PARA_MAX;
 
 	for (i = 0; i < array_len; i++) {
-		if (mca_parse_dts_string_index(node, "fod_params", i,
-					       &tmp_string))
+		if (mca_parse_dts_string_index(node, prop, i, &tmp_string))
 			return -1;
 
 		row = i / FOD_PARA_MAX;
 		col = i % FOD_PARA_MAX;
 		switch (col) {
 		case FOD_PARA_TYPE:
-			if (kstrtou8(tmp_string, 10,
-				     &info->fod_params[row].type))
+			if (kstrtou8(tmp_string, 10, &fod_params[row].type))
 				return -1;
 			break;
 		case FOD_PARA_LENGTH:
-			if (kstrtou8(tmp_string, 10,
-				     &info->fod_params[row].length))
+			if (kstrtou8(tmp_string, 10, &fod_params[row].length))
 				return -1;
 			break;
 		case FOD_PARA_UUID:
-			if (kstrtoint(tmp_string, 16,
-				      &info->fod_params[row].uuid))
+			if (kstrtoint(tmp_string, 16, &fod_params[row].uuid))
 				return -1;
 			break;
 		case FOD_PARA_PARAMS:
 			if (sc96281_parse_params(node, tmp_string,
-						 info->fod_params[row].params))
+						 fod_params[row].params))
+				return -1;
+			break;
+		case FOD_PARA_PARAMS_MAG:
+			if (sc96281_parse_params(node, tmp_string,
+						 fod_params[row].params_mag))
+				return -1;
+			break;
+		case FOD_PARA_PARAMS_MAG_THICK:
+			if (sc96281_parse_params(
+				    node, tmp_string,
+				    fod_params[row].params_mag_thick))
 				return -1;
 			break;
 		default:
@@ -3198,6 +3247,18 @@ static int sc96281_parse_fod_params_default(struct device_node *node,
 				    info->fod_params_default.params))
 				return -1;
 			break;
+		case FOD_PARA_PARAMS_MAG:
+			if (sc96281_parse_params(
+				    node, tmp_string,
+				    info->fod_params_default.params_mag))
+				return -1;
+			break;
+		case FOD_PARA_PARAMS_MAG_THICK:
+			if (sc96281_parse_params(
+				    node, tmp_string,
+				    info->fod_params_default.params_mag_thick))
+				return -1;
+			break;
 		default:
 			break;
 		}
@@ -3225,7 +3286,11 @@ static int sc96281_parse_fw_fod_data(struct sc96281 *chip)
 		break;
 	}
 
-	ret = sc96281_parse_fod_params(node, chip);
+	ret = sc96281_parse_fod_params(node, "fod_params_2_1",
+				       chip->fod_params_2_1,
+				       &chip->fod_params_2_1_size);
+	ret = sc96281_parse_fod_params(node, "fod_params", chip->fod_params,
+				       &chip->fod_params_size);
 	ret = sc96281_parse_fod_params_default(node, chip);
 
 	mca_log_info("cur fw_data is:[0]:%02x; [1]:%02x; [2]:%02x\n",
@@ -3277,22 +3342,6 @@ static int sc96281_parse_dt(struct sc96281 *chip)
 		return -1;
 	}
 
-	if (chip->support_hall) {
-		chip->pinctrl_stat_hall = pinctrl_lookup_state(
-			chip->sc96281_pinctrl, "hall_int_pull_up");
-		if (IS_ERR_OR_NULL(chip->pinctrl_stat_hall)) {
-			mca_log_err("failed to parse pinctrl_stat_hall\n");
-			return -1;
-		}
-
-		ret = pinctrl_select_state(chip->sc96281_pinctrl,
-					   chip->pinctrl_stat_hall);
-		if (ret) {
-			mca_log_err("failed to select pinctrl_stat_hall\n");
-			return -1;
-		}
-	}
-
 	chip->enable_gpio = of_get_named_gpio(node, "sleep-rx-gpio", 0);
 	if ((!gpio_is_valid(chip->enable_gpio))) {
 		mca_log_err("fail_enable_gpio %d\n", chip->enable_gpio);
@@ -3316,10 +3365,16 @@ static int sc96281_parse_dt(struct sc96281 *chip)
 	}
 
 	if (chip->support_hall) {
-		chip->hall_int_gpio = of_get_named_gpio(node, "hall-int2", 0);
-		if (!gpio_is_valid(chip->hall_int_gpio)) {
-			mca_log_err("fail_hall_int_gpio %d\n",
-				    chip->hall_int_gpio);
+		chip->hall_n_int_gpio = of_get_named_gpio(node, "hall-n-int", 0);
+		if (!gpio_is_valid(chip->hall_n_int_gpio)) {
+			mca_log_err("fail_hall_n_int_gpio %d\n",
+				    chip->hall_n_int_gpio);
+			return -EINVAL;
+		}
+		chip->hall_s_int_gpio = of_get_named_gpio(node, "hall-s-int", 0);
+		if (!gpio_is_valid(chip->hall_s_int_gpio)) {
+			mca_log_err("fail_hall_s_int_gpio %d\n",
+				    chip->hall_s_int_gpio);
 			return -EINVAL;
 		}
 	}
@@ -3330,6 +3385,37 @@ static int sc96281_parse_dt(struct sc96281 *chip)
 		return -EINVAL;
 	}
 
+	return 0;
+}
+
+static int sc96281_request_hall_irq(struct sc96281 *chip, int gpio, int *irq,
+				    const char *name)
+{
+	int ret;
+
+	if (!gpio_is_valid(gpio)) {
+		mca_log_err("%s gpio not provided\n", name);
+		return -EINVAL;
+	}
+
+	*irq = gpio_to_irq(gpio);
+	if (*irq < 0) {
+		mca_log_err("%s gpio_to_irq fail\n", name);
+		return *irq;
+	}
+
+	ret = devm_request_threaded_irq(&chip->client->dev, *irq, NULL,
+					sc96281_hall_interrupt_handler,
+					IRQF_TRIGGER_FALLING |
+						IRQF_TRIGGER_RISING |
+						IRQF_ONESHOT,
+					name, chip);
+	if (ret) {
+		mca_log_err("Failed %s = %d ret = %d\n", name, *irq, ret);
+		return ret;
+	}
+
+	enable_irq_wake(*irq);
 	return 0;
 }
 
@@ -3400,34 +3486,16 @@ static int sc96281_irq_init(struct sc96281 *chip)
 
 	//hall_irq init
 	if (chip->support_hall) {
-		if (gpio_is_valid(chip->hall_int_gpio)) {
-			chip->hall_int_irq = gpio_to_irq(chip->hall_int_gpio);
-			if (chip->hall_int_gpio < 0) {
-				mca_log_err("gpio_to_hall_int Fail!\n");
-				goto fail_hall_int_gpio;
-			}
-		} else {
-			mca_log_err("hall int gpio not provided\n");
-			goto fail_hall_int_gpio;
-		}
-		if (chip->hall_int_irq) {
-			ret = devm_request_threaded_irq(
-				&chip->client->dev, chip->hall_int_irq, NULL,
-				sc96281_hall_interrupt_handler,
-				(IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING |
-				 IRQF_ONESHOT),
-				"sc96281_hall_int_irq", chip);
-			if (ret)
-				mca_log_err("Failed hall irq = %d ret = %d\n",
-					    chip->hall_int_irq, ret);
-		}
-		enable_irq_wake(chip->hall_int_irq);
+		ret = sc96281_request_hall_irq(chip, chip->hall_n_int_gpio,
+					       &chip->hall_n_int_irq,
+					       "sc96281_hall_nint_irq");
+		ret |= sc96281_request_hall_irq(chip, chip->hall_s_int_gpio,
+						&chip->hall_s_int_irq,
+						"sc96281_hall_s_int_irq");
 	}
 
 	return ret;
 
-fail_hall_int_gpio:
-	gpio_free(chip->hall_int_gpio);
 fail_power_good_gpio:
 	gpio_free(chip->power_good_gpio);
 fail_irq_gpio:
@@ -3566,10 +3634,6 @@ static void sc96281_charger_remove(struct i2c_client *client)
 		gpio_free(chip->irq_gpio);
 	if (chip->power_good_gpio > 0)
 		gpio_free(chip->power_good_gpio);
-	if (chip->support_hall) {
-		if (chip->hall_int_gpio > 0)
-			gpio_free(chip->hall_int_gpio);
-	}
 
 	//devm_kfree(&client->dev, chip);
 }

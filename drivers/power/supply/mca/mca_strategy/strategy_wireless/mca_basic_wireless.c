@@ -2499,6 +2499,8 @@ static void strategy_wireless_chg_handler(struct strategy_wireless_dev *info)
 		cancel_delayed_work_sync(&info->rx_fastcharge_work);
 		platform_class_buckchg_ops_set_aicl_enable(MAIN_BUCK_CHARGER,
 							   false);
+		platform_class_update_tx_magnetic_case_status(
+			WIRELESS_ROLE_MASTER);
 
 		ret = platform_class_wireless_get_ss_voltage(
 			WIRELESS_ROLE_MASTER, &info->proc_data.ss_voltage);

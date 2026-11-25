@@ -82,6 +82,7 @@ enum fod_params_set {
 };
 
 #define SC96281_CP_MODE_2_1 2
+#define SC96281_REG_CASE_STATUS 0x1DB
 
 enum wls_work_mode {
 	RX_MODE,
@@ -752,6 +753,8 @@ struct sc96281_chg_proc_data {
 	bool parallel_charge;
 	int vout_setted;
 	int ss_voltage;
+	int cp_mode;
+	bool reverse_chg_en;
 };
 
 struct sc96281 {
@@ -780,6 +783,8 @@ struct sc96281 {
 	int work_mode;
 	int project_vendor;
 	int support_hall;
+	int send_case_status_forward;
+	int send_case_status_reverse;
 	int rx_role;
 	int fw_version_index;
 
@@ -791,7 +796,6 @@ struct sc96281 {
 	int fw_data_size;
 	int fod_params_size;
 	int fod_params_2_1_size;
-	int cp_mode;
 	unsigned char *fw_data_ptr;
 	fw_params_t *wls_fw_data;
 	// fw_bin

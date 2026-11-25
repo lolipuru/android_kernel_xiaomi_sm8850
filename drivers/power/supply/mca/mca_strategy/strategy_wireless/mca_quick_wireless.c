@@ -1719,6 +1719,10 @@ mca_wireless_quick_charge_startup(struct mca_wireless_quick_charge_info *info)
 		return;
 	}
 
+	platform_class_wireless_set_cp_mode(WIRELESS_ROLE_MASTER,
+					    info->proc_data.adp_mode);
+	platform_class_wireless_set_fod_params(WIRELESS_ROLE_MASTER, 0);
+
 	mca_wireless_quick_charge_select_cur_work_mode(info);
 	mca_wireless_quick_charge_start_charging(info);
 }

@@ -1565,6 +1565,8 @@ static void mca_wireless_reverse_chg_handler(struct mca_wireless_revchg *info)
 		if (!info->tx_timeout_flag)
 			cancel_delayed_work_sync(
 				&info->tx_transfer_timeout_work);
+		platform_class_update_tx_magnetic_case_status(
+			WIRELESS_ROLE_MASTER);
 		mca_log_info("RTX_INT_GET_RX: get rx!\n");
 		break;
 	case RTX_INT_CEP_TIMEOUT:

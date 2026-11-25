@@ -1272,6 +1272,7 @@ static int sc96281_enable_reverse_chg(bool enable, void *data)
 {
 	struct sc96281 *chip = (struct sc96281 *)data;
 
+	chip->proc_data.reverse_chg_en = enable;
 	return sc96281_tx_enable(chip, enable);
 }
 
@@ -1671,7 +1672,7 @@ static int sc96281_set_fod_params(int value, void *data)
 		     chip->proc_data.uuid[1], chip->proc_data.uuid[2],
 		     chip->proc_data.uuid[3]);
 
-	if (chip->cp_mode == SC96281_CP_MODE_2_1) {
+	if (chip->proc_data.cp_mode == SC96281_CP_MODE_2_1) {
 		for (i = 0; i < chip->fod_params_2_1_size; i++) {
 			if (uuid != chip->fod_params_2_1[i].uuid)
 				continue;
@@ -1695,12 +1696,27 @@ static int sc96281_set_fod_params(int value, void *data)
 	return 0;
 }
 
+static int sc96281_update_tx_magnetic_case_status(void *data)
+{
+	struct sc96281 *chip = (struct sc96281 *)data;
+	uint8_t status = sc96281_get_fod_set(chip);
+
+	if (!(chip->proc_data.power_good_flag &&
+	      chip->send_case_status_forward) &&
+	    !(chip->proc_data.reverse_chg_en &&
+	      chip->send_case_status_reverse))
+		return 0;
+
+	mca_log_info("send magnetic case status: %d\n", status);
+	return sc96281_write_block(chip, SC96281_REG_CASE_STATUS, &status, 1);
+}
+
 static int sc96281_set_cp_mode(int mode, void *data)
 {
 	struct sc96281 *chip = (struct sc96281 *)data;
 
 	mca_log_info("set cp_mode %d\n", mode);
-	chip->cp_mode = mode;
+	chip->proc_data.cp_mode = mode;
 
 	return 0;
 }
@@ -2880,6 +2896,8 @@ static struct platform_class_wireless_ops sc96281_wls_ops = {
 	.wls_process_factory_cmd = sc96281_process_factory_cmd,
 	.wls_get_hall_gpio_status = sc96281_get_hall_gpio_status,
 	.wls_set_cp_mode = sc96281_set_cp_mode,
+	.wls_update_tx_magnetic_case_status =
+		sc96281_update_tx_magnetic_case_status,
 	.wls_enable_vsys_ctrl = sc96281_enable_vsys_ctrl,
 	.wls_get_trx_isense = sc96281_get_trx_isense,
 	.wls_get_trx_vrect = sc96281_get_trx_vrect,
@@ -3312,6 +3330,10 @@ static int sc96281_parse_dt(struct sc96281 *chip)
 	(void)mca_parse_dts_u32(node, "project_vendor", &chip->project_vendor,
 				0);
 	(void)mca_parse_dts_u32(node, "support-hall", &chip->support_hall, 0);
+	(void)mca_parse_dts_u32(node, "should-send-case-status-forward",
+				&chip->send_case_status_forward, 0);
+	(void)mca_parse_dts_u32(node, "should-send-case-status-reverse",
+				&chip->send_case_status_reverse, 0);
 	(void)mca_parse_dts_u32(node, "rx_role", &chip->rx_role, 0);
 	(void)mca_parse_dts_u32(node, "fw_version_index",
 				&chip->fw_version_index, 0);

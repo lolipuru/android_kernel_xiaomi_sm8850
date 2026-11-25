@@ -1213,6 +1213,20 @@ int platform_class_wireless_set_cp_mode(unsigned int role, int mode)
 }
 EXPORT_SYMBOL(platform_class_wireless_set_cp_mode);
 
+int platform_class_update_tx_magnetic_case_status(unsigned int role)
+{
+	struct platform_wireless_class_ops_data *temp_data =
+		platform_wireless_class_get_ic_ops(role);
+
+	if (platform_wireless_ops_invalid(temp_data,
+					  wls_update_tx_magnetic_case_status))
+		return -EOPNOTSUPP;
+
+	return temp_data->ops->wls_update_tx_magnetic_case_status(
+		temp_data->data);
+}
+EXPORT_SYMBOL(platform_class_update_tx_magnetic_case_status);
+
 static int
 platform_wireless_dev_parse_dt(struct platform_wireless_dev *wireless)
 {

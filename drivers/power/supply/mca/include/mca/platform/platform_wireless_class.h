@@ -126,6 +126,7 @@ struct platform_class_wireless_ops {
 	int (*wls_check_fw_update)(bool *, void *data);
 	int (*wls_set_tx_cust_operation)(void *data);
 	int (*wls_set_cp_mode)(int, void *data);
+	int (*wls_update_tx_magnetic_case_status)(void *data);
 };
 int platform_class_wireless_register_ops(
 	unsigned int role, void *data, struct platform_class_wireless_ops *ops);
@@ -241,4 +242,5 @@ int platform_class_wireless_get_hall_n_gpio_status(unsigned int role, int *statu
 int platform_class_wireless_check_fw_update(unsigned int role, bool *update);
 int platform_class_wireless_set_tx_cust_operation(unsigned int role);
 int platform_class_wireless_set_cp_mode(unsigned int role, int mode);
+int platform_class_update_tx_magnetic_case_status(unsigned int role);
 #endif /* _MCA_PLATFORM_PLATFORM_WIRELESS_CLASS_H_ */

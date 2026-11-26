@@ -136,6 +136,9 @@ int mitee_alloc_memory_sgt(uint32_t mem_size, struct sg_table **out_sgt)
 	struct sg_table *sgt = NULL;
 	struct scatterlist *sg = NULL;
 
+	if (!mem_size)
+		return -EINVAL;
+
 	INIT_LIST_HEAD(&page_frag.page_node);
 
 	for (index = MAX_PAGE_ORDER - 1; index >= 0; index--) {
@@ -146,8 +149,9 @@ int mitee_alloc_memory_sgt(uint32_t mem_size, struct sg_table **out_sgt)
 				break;
 			}
 
-			tmp_page_frag_entry = kvmalloc(sizeof(*tmp_page_frag_entry), GFP_KERNEL);
+			tmp_page_frag_entry = kmalloc(sizeof(*tmp_page_frag_entry), GFP_KERNEL);
 			if (!tmp_page_frag_entry) {
+				__free_pages(pages, index);
 				rc = -ENOMEM;
 				goto out_free;
 			}
@@ -176,6 +180,7 @@ int mitee_alloc_memory_sgt(uint32_t mem_size, struct sg_table **out_sgt)
 	rc = sg_alloc_table(sgt, page_frag.n_entries, GFP_KERNEL);
 	if (rc) {
 		pr_err("mitee dynamic mem: failed to alloc sg_table with %d", rc);
+		kfree(sgt);
 		goto out_free;
 	}
 

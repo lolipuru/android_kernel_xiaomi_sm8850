@@ -249,6 +249,9 @@ int optee_open_session(struct tee_context *ctx,
 	if (IS_ERR(ctx) || IS_ERR(arg) || IS_ERR(param))
 		return -EINVAL;
 
+	if (arg->num_params > MITEE_MSG_MAX_NUM_PARAMS - 2)
+		return -EINVAL;
+
 	rc = optee_auth_ca();
 	if (rc)
 		return rc;
@@ -370,8 +373,13 @@ int optee_invoke_func(struct tee_context *ctx, struct tee_ioctl_invoke_arg *arg,
 	struct optee_context_data *ctxdata = ctx->data;
 	struct optee_msg_arg *msg_arg = NULL;
 	struct optee_session *sess = NULL;
-	size_t sz = OPTEE_MSG_GET_ARG_SIZE(arg->num_params);
+	size_t sz;
 	int rc;
+
+	if (arg->num_params > MITEE_MSG_MAX_NUM_PARAMS)
+		return -EINVAL;
+
+	sz = OPTEE_MSG_GET_ARG_SIZE(arg->num_params);
 
 	mitee_bench_timestamp(arg->session, "optee_invoke_func enter");
 

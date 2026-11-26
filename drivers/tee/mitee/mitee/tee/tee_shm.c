@@ -8,16 +8,19 @@
 #include <linux/device.h>
 #include <linux/idr.h>
 #include <linux/mm.h>
+#include <linux/overflow.h>
 #include <linux/sched.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <linux/uio.h>
 #include <linux/highmem.h>
-#include <linux/uio.h>
 #include <tee_drv.h>
 #include "tee_private.h"
 #include "../tee_bench.h"
+
+#define TEE_SHM_VMALLOC_MAX_SIZE	SZ_32M
 
 static void shm_put_kernel_pages(struct page **pages, size_t page_count)
 {
@@ -89,13 +92,14 @@ static void tee_shm_release(struct tee_device *teedev, struct tee_shm *shm)
 	} else if (shm->flags & TEE_SHM_REGISTER) {
 		int rc = teedev->desc->ops->shm_unregister(shm->ctx, shm);
 
-		if (rc)
+		if (rc) {
 			dev_err(teedev->dev.parent,
 				"unregister shm %p failed: %d", shm, rc);
-
-		release_registered_pages(shm);
-		if (shm->flags & TEE_SHM_VMALLOC)
-			vfree(shm->kaddr);
+		} else {
+			release_registered_pages(shm);
+			if (shm->flags & TEE_SHM_VMALLOC)
+				vfree(shm->kaddr);
+		}
 	}
 
 	teedev_ctx_put(shm->ctx);
@@ -202,9 +206,14 @@ struct tee_shm *tee_shm_register(struct tee_context *ctx, unsigned long addr,
 	const u32 req_kernel_flags = TEE_SHM_DMA_BUF | TEE_SHM_KERNEL_MAPPED;
 	struct tee_shm *shm;
 	unsigned long start;
+	unsigned long end;
+	unsigned long aligned_end;
 	size_t num_pages;
 	void *ret;
 	int rc;
+
+	if (!length)
+		return ERR_PTR(-EINVAL);
 
 	if (ctx == NULL) {
 		pr_err("ctx is failed\n");
@@ -249,11 +258,19 @@ struct tee_shm *tee_shm_register(struct tee_context *ctx, unsigned long addr,
 	shm->flags = flags | TEE_SHM_REGISTER;
 	shm->ctx = ctx;
 	shm->id = -1;
+	if (flags & TEE_SHM_VMALLOC)
+		shm->kaddr = (void *)addr;
 	addr = untagged_addr(addr);
 	start = rounddown(addr, PAGE_SIZE);
+	if (check_add_overflow(addr, length, &end) ||
+	    check_add_overflow(end, PAGE_SIZE - 1, &aligned_end)) {
+		ret = ERR_PTR(-EINVAL);
+		goto err;
+	}
+	aligned_end = rounddown(aligned_end, PAGE_SIZE);
 	shm->offset = addr - start;
 	shm->size = length;
-	num_pages = (roundup(addr + length, PAGE_SIZE) - start) / PAGE_SIZE;
+	num_pages = (aligned_end - start) / PAGE_SIZE;
 	shm->pages = kcalloc(num_pages, sizeof(*shm->pages), GFP_KERNEL);
 	if (!shm->pages) {
 		pr_err("shm->pages alloc is failed. num_pages: %lx\n", num_pages);
@@ -344,7 +361,7 @@ struct tee_shm *tee_shm_alloc_vmalloc(struct tee_context *ctx, size_t size)
 	struct tee_shm *shm;
 	void *va;
 
-	if (!size)
+	if (!size || size > TEE_SHM_VMALLOC_MAX_SIZE)
 		return ERR_PTR(-EINVAL);
 
 	/* zeroed and mappable to user space */
@@ -359,7 +376,6 @@ struct tee_shm *tee_shm_alloc_vmalloc(struct tee_context *ctx, size_t size)
 		vfree(va);
 		return shm;
 	}
-	shm->kaddr = va;
 
 	return shm;
 }

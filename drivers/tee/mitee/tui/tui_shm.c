@@ -11,13 +11,15 @@
 #include <linux/idr.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 
 #include "tui_shm.h"
 
-/* buffers that can be looked up by id, each holds a reference */
+#define TUI_SHM_MAX_SIZE	SZ_32M
+
 static DEFINE_IDR(tui_shm_idr);
 static DEFINE_MUTEX(tui_shm_mutex);
 
@@ -41,7 +43,7 @@ struct tui_shm *tui_shm_alloc(size_t size, const uint8_t *name)
 	struct tui_shm *shm;
 	int rc;
 
-	if (!size)
+	if (!size || size > TUI_SHM_MAX_SIZE)
 		return ERR_PTR(-EINVAL);
 
 	shm = kzalloc(sizeof(*shm), GFP_KERNEL);
@@ -55,7 +57,7 @@ struct tui_shm *tui_shm_alloc(size_t size, const uint8_t *name)
 		goto err_free_shm;
 	}
 	strscpy(shm->name, name, sizeof(shm->name));
-	refcount_set(&shm->refcount, 1);
+	refcount_set(&shm->refcount, 2);
 
 	mutex_lock(&tui_shm_mutex);
 	shm->id = idr_alloc(&tui_shm_idr, shm, 1, 0, GFP_KERNEL);
@@ -99,7 +101,6 @@ void tui_shm_remove(struct tui_shm *shm)
 		tui_shm_put(shm);
 }
 
-/* returns a referenced buffer, release it with tui_shm_put() */
 struct tui_shm *tui_shm_get_by_id(int id)
 {
 	struct tui_shm *shm;
@@ -135,7 +136,6 @@ static const struct file_operations tui_shm_fops = {
 	.mmap = tui_shm_fop_mmap,
 };
 
-/* the file holds its own reference to @shm */
 struct file *tui_shm_get_file(struct tui_shm *shm)
 {
 	struct file *file;

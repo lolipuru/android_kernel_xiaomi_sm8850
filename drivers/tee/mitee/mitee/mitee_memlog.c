@@ -23,6 +23,7 @@
 #include <linux/fs.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/minmax.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/panic_notifier.h>
@@ -30,6 +31,7 @@
 #include <linux/poll.h>
 #include <linux/proc_fs.h>
 #include <linux/sched.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/syscalls.h>
@@ -45,6 +47,21 @@
 #define SET_KEY_FILE "/data/vendor/mitee/key.log"
 static bool g_read_b_buf;
 
+static bool memlog_sizes_valid(const struct mitee_memlog_state *s,
+			       uint32_t sz, uint32_t b_sz)
+{
+	size_t data_cap;
+
+	if (s->log_size <= offsetof(struct log_rb, data))
+		return false;
+	data_cap = s->log_size - offsetof(struct log_rb, data);
+	if (!sz || sz > data_cap)
+		return false;
+	if (!b_sz || b_sz > data_cap - sz)
+		return false;
+	return true;
+}
+
 static int log_read_line_internal(struct mitee_memlog_state *s, uint32_t put, uint32_t get,
 					uint32_t rb_start, uint32_t rb_size)
 {
@@ -55,6 +72,9 @@ static int log_read_line_internal(struct mitee_memlog_state *s, uint32_t put, ui
 	int j = 0;
 	char c = '\0';
 	size_t max_to_read;
+
+	if (!rb_size)
+		return 0;
 
 	max_to_read = min((size_t)(put - get), sizeof(s->line_buffer) - 1);
 	offset = get % rb_size;
@@ -77,18 +97,16 @@ done:
 	return (i + j);
 }
 
-static int log_read_line(struct mitee_memlog_state *s, uint32_t put, uint32_t get)
+static int log_read_line(struct mitee_memlog_state *s, uint32_t put,
+			 uint32_t get, uint32_t sz)
 {
-	struct log_rb *log = s->log;
-
-	return log_read_line_internal(s, put, get, 0, log->sz);
+	return log_read_line_internal(s, put, get, 0, sz);
 }
 
-static int log_read_b_line(struct mitee_memlog_state *s, uint32_t put, uint32_t get)
+static int log_read_b_line(struct mitee_memlog_state *s, uint32_t put,
+			   uint32_t get, uint32_t sz, uint32_t b_sz)
 {
-	struct log_rb *log = s->log;
-
-	return log_read_line_internal(s, put, get, log->sz, log->b_sz);
+	return log_read_line_internal(s, put, get, sz, b_sz);
 }
 
 #ifdef ENABLE_DUMP_MITEE_LOG
@@ -195,8 +213,20 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 {
 	struct log_rb *log = s->log;
 	uint32_t get, put, alloc;
-	int read_chars = 0, copy_chars = 0, tbuf_size, outbuf_size;
+	uint32_t sz, b_sz;
+	int read_chars = 0;
+	size_t copy_chars = 0, tbuf_size, outbuf_size;
 	char *psrc = NULL;
+
+	if (!size)
+		return 0;
+
+	sz = READ_ONCE(log->sz);
+	b_sz = READ_ONCE(log->b_sz);
+	if (!sz && !b_sz)
+		return 0;
+	if (!memlog_sizes_valid(s, sz, b_sz))
+		return -EFAULT;
 
 	if (!g_read_b_buf) {
 		/*
@@ -213,12 +243,12 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 		alloc = log->b_alloc;
 
 		/* the counters wrap, compare distances rather than positions */
-		if (alloc - get > log->b_sz) {
+		if (alloc - get > b_sz) {
 			pr_notice_ratelimited("mitee: bootup log overflow, lose some msg.");
-			get = alloc - log->b_sz;
+			get = alloc - b_sz;
 		}
 
-		if (put - get > log->b_sz)
+		if (put - get > b_sz)
 			return -EFAULT;
 
 		if (is_b_buf_empty(s)) {
@@ -226,7 +256,7 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 			return 0;
 		}
 
-		outbuf_size = min((int)(put - get), (int)size);
+		outbuf_size = min3((size_t)(put - get), size, (size_t)SZ_64K);
 
 		tbuf_size = (outbuf_size / MITEE_LINE_BUFFER_SIZE + 1) *
 			    MITEE_LINE_BUFFER_SIZE;
@@ -238,7 +268,7 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 			return -ENOMEM;
 
 		while (get != put) {
-			read_chars = log_read_b_line(s, put, get);
+			read_chars = log_read_b_line(s, put, get, sz, b_sz);
 			/* Force the loads from log_read_line to complete. */
 			rmb();
 			if (copy_chars + read_chars > outbuf_size)
@@ -272,18 +302,18 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 		alloc = log->alloc;
 
 		/* the counters wrap, compare distances rather than positions */
-		if (alloc - get > log->sz) {
+		if (alloc - get > sz) {
 			pr_notice_ratelimited("mitee: runtime log overflow, lose some msg.");
-			get = alloc - log->sz;
+			get = alloc - sz;
 		}
 
-		if (put - get > log->sz)
+		if (put - get > sz)
 			return -EFAULT;
 
 		if (is_buf_empty(s))
 			return 0;
 
-		outbuf_size = min((int)(put - get), (int)size);
+		outbuf_size = min3((size_t)(put - get), size, (size_t)SZ_64K);
 
 		tbuf_size = (outbuf_size / MITEE_LINE_BUFFER_SIZE + 1) *
 			    MITEE_LINE_BUFFER_SIZE;
@@ -295,7 +325,7 @@ static int do_mitee_memlog_read(struct mitee_memlog_state *s, char __user *buf,
 			return -ENOMEM;
 
 		while (get != put) {
-			read_chars = log_read_line(s, put, get);
+			read_chars = log_read_line(s, put, get, sz);
 			/* Force the loads from log_read_line to complete. */
 			rmb();
 			if (copy_chars + read_chars > outbuf_size)
@@ -377,6 +407,9 @@ static ssize_t mitee_memlog_key_read(struct file *file, char __user *buf,
 	struct mitee_memlog_state *s = pde_data(file_inode(file));
 	int ret = 0;
 	char *psrc = NULL;
+
+	if (size < KEY_LENGTH)
+		return -EINVAL;
 
 	psrc = kzalloc(KEY_LENGTH, GFP_KERNEL);
 
@@ -498,17 +531,27 @@ int mitee_memlog_probe(struct platform_device *pdev)
 
 	begin = roundup(args.out.paddr, PAGE_SIZE);
 	end = rounddown(args.out.paddr + args.out.size, PAGE_SIZE);
+	if (end <= begin) {
+		result = -EINVAL;
+		goto error_alloc_log;
+	}
 	pa = begin;
 	size = end - begin;
 
-	pr_err("miteelog paddr=%#llx, size=%zu\n", (uint64_t)pa, size);
+	pr_info("miteelog paddr=%#llx, size=%zu\n", (uint64_t)pa, size);
 	va = memremap(pa, size, MEMREMAP_WB);
 	if (!va) {
 		pr_err("miteelog ioremap failed\n");
 		result = -EFAULT;
 		goto error_alloc_log;
 	}
+	if (size <= offsetof(struct log_rb, data)) {
+		result = -EINVAL;
+		memunmap(va);
+		goto error_alloc_log;
+	}
 	s->log = va;
+	s->log_size = size;
 
 	s->call_notifier.notifier_call = mitee_memlog_call_notify;
 	result = mitee_call_notifier_register(&s->call_notifier);
@@ -535,7 +578,8 @@ int mitee_memlog_probe(struct platform_device *pdev)
 				   s);
 	if (!s->proc) {
 		pr_info("mitee_log proc_create failed!\n");
-		return -ENOMEM;
+		result = -ENOMEM;
+		goto error_panic_remove;
 	}
 
 	/* create /proc/mitee_log_key */
@@ -543,21 +587,22 @@ int mitee_memlog_probe(struct platform_device *pdev)
 				       &mitee_memlog_key_fops, s);
 	if (!s->proc_key) {
 		pr_info("mitee_log proc_key_create failed!\n");
-		return -ENOMEM;
+		result = -ENOMEM;
+		goto error_proc_remove;
 	}
 
 	return 0;
 
+error_proc_remove:
+	proc_remove(s->proc);
+error_panic_remove:
+	platform_set_drvdata(pdev, NULL);
+	atomic_notifier_chain_unregister(&panic_notifier_list,
+					 &s->panic_notifier);
 error_panic_notifier:
 	mitee_call_notifier_unregister(&s->call_notifier);
 error_call_notifier:
-	/*
-	 * TODO notify tee we failed register notifier
-	 * trusty_std_call32(s->trusty_dev, SMC_SC_SHARED_LOG_RM,
-	 * (u32)pa, (u32)((u64)pa >> 32), 0);
-	 * error_std_call:
-	 * __free_pages(s->log_pages, get_order(TRUSTY_LOG_SIZE));
-	 */
+	memunmap(s->log);
 error_alloc_log:
 	kfree(s);
 	s = NULL;
@@ -567,27 +612,20 @@ error_alloc_state:
 
 int mitee_memlog_remove(struct platform_device *pdev)
 {
-	/* int result; */
 	struct mitee_memlog_state *s = platform_get_drvdata(pdev);
-	/* phys_addr_t pa = page_to_phys(s->log_pages); */
+
 	if (!s)
 		return 0;
 
 	dev_dbg(&pdev->dev, "%s get = %x\n", __func__, s->get);
+	platform_set_drvdata(pdev, NULL);
 	proc_remove(s->proc);
 	proc_remove(s->proc_key);
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &s->panic_notifier);
 	mitee_call_notifier_unregister(&s->call_notifier);
-	/*
-	 * TODO notify tee we failed register notifier
-	 * result = trusty_std_call32(s->trusty_dev, SMC_SC_SHARED_LOG_RM,
-	 * (u32)pa, (u32)((u64)pa >> 32), 0);
-	 * if (result) {
-	 * pr_err("trusty std call (SMC_SC_SHARED_LOG_RM) failed: %d\n", result);
-	 * }
-	 * __free_pages(s->log_pages, get_order(TRUSTY_LOG_SIZE));
-	 */
+	if (s->log)
+		memunmap(s->log);
 	kfree(s);
 
 	return 0;

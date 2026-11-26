@@ -38,7 +38,7 @@
 #define MITEE_FEATURE_CAP_ENABLE (0)
 #define OPTEE_SHM_NUM_PRIV_PAGES (1)
 #define THREAD_RPC_MAX_NUM_PARAMS (4)
-#define DEBUG_CALL (1)
+#define DEBUG_CALL (0)
 #define DEBUG_RPC (0)
 #undef MITEE_SHM_DEBUG
 

@@ -1,19 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Gunyah message queue transport for MiTEE on Qualcomm platforms.
- *
- * The TEE runs in the Gunyah OEM VM. Calls are exchanged with it over a
- * Gunyah message queue, and memory is shared or lent to it through the
- * Gunyah resource manager.
- *
- * This file is divided into the following sections:
- * 1. Wire format and driver state
- * 2. Maintain a hash table for lookup of a Gunyah memparcel handle
- * 3. Convert between struct tee_param and struct optee_msg_param
- * 4. Share and lend memory with the TEE VM
- * 5. Receive thread and calls into secure world
- * 6. Driver initialization
- */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": [%s %d] " fmt, __func__, __LINE__
 
@@ -24,6 +9,7 @@
 #include <linux/gunyah/gh_common.h>
 #include <linux/gunyah/gh_msgq.h>
 #include <linux/gunyah/gh_rm_drv.h>
+#include <linux/jiffies.h>
 #include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -45,9 +31,6 @@
 #include "rpc_callback.h"
 #include "dynamic_mem.h"
 
-/*
- * 1. Wire format and driver state
- */
 #define MSGQ_MAGIC		0x5147534d4f414958ULL /* "XIAOMSGQ" */
 #define MSGQ_PEER_REE		0x8000
 
@@ -88,7 +71,7 @@ struct msgq_msg_hdr {
 
 struct msgq_msg {
 	struct msgq_msg_hdr hdr;
-	u64 data[5];	/* cmd/resp + 4 params */
+	u64 data[5];
 } __packed;
 
 #define MSGQ_PAYLOAD_SIZE	sizeof_field(struct msgq_msg, data)
@@ -115,7 +98,6 @@ static struct {
 	gh_vmid_t peer_vmid;
 	u32 peer_name;
 
-	/* static shared buffer from DT, shared once the TEE VM is up */
 	struct resource shm;
 	u32 shm_label;
 	gh_memparcel_handle_t shm_handle;
@@ -126,6 +108,8 @@ static struct {
 	size_t msg_buf_size;
 	gh_memparcel_handle_t msg_buf_handle;
 	bool msg_buf_shared;
+	struct completion msg_buf_ready;
+	bool stopping;
 
 	/* replies to yielding calls, FIFO */
 	spinlock_t reply_lock;
@@ -139,6 +123,7 @@ static struct {
 	spinlock_t fast_lock;
 	struct completion fast_done;
 	struct msgq_reply fast_reply;
+	bool fast_waiting;
 	bool fast_valid;
 
 	struct mutex shm_mutex;
@@ -149,8 +134,6 @@ static struct {
 } msgq_ctx;
 
 /*
- * 2. Maintain a hash table for lookup of a Gunyah memparcel handle
- *
  * Registered shared memory is referred to by its memparcel handle when
  * communicating with secure world.
  */
@@ -161,12 +144,23 @@ struct shm_rhash {
 	struct rhash_head linkage;
 };
 
+static int msgq_assign_shared(struct sg_table *sgt, bool share);
+
 static void rh_free_fn(void *ptr, void *arg)
 {
 	struct shm_rhash *r = ptr;
+	int rc;
 
-	sg_free_table(r->sgt);
-	kfree(r->sgt);
+	rc = ghd_rm_mem_reclaim(r->handle, 0);
+	if (rc)
+		pr_err("reclaim 0x%llx failed: %d\n", r->handle, rc);
+	else if (r->sgt)
+		msgq_assign_shared(r->sgt, false);
+
+	if (r->sgt) {
+		sg_free_table(r->sgt);
+		kfree(r->sgt);
+	}
 	kfree(r);
 }
 
@@ -291,11 +285,6 @@ static int to_msg_param_msgq_mem(struct optee_msg_param *mp,
 	return 0;
 }
 
-/*
- * 4. Share and lend memory with the TEE VM
- */
-
-/* stage 2 permissions of @sgt: self only, or self and the TEE VM */
 static int msgq_assign_shared(struct sg_table *sgt, bool share)
 {
 	u32 self = msgq_ctx.self_vmid;
@@ -316,7 +305,6 @@ static int msgq_assign_shared(struct sg_table *sgt, bool share)
 	return rc;
 }
 
-/* move the stage 2 ownership of @sgt from @src to @dst */
 static int msgq_assign_lent(struct sg_table *sgt, u32 src, u32 dst)
 {
 	int dst_vm = dst;
@@ -435,8 +423,10 @@ static void msgq_unshare_contiguous(phys_addr_t pa, size_t size,
 	int rc;
 
 	rc = ghd_rm_mem_reclaim(handle, 0);
-	if (rc)
+	if (rc) {
 		pr_err("reclaim 0x%x failed: %d\n", handle, rc);
+		return;
+	}
 
 	qcom_scm_assign_mem(pa, size, &src_both, &self, 1);
 }
@@ -473,6 +463,10 @@ static int optee_msgq_shm_register(struct tee_context *ctx,
 		pr_err("do not support supp!\n");
 		return -EACCES;
 	}
+
+	if (READ_ONCE(msgq_ctx.stopping) ||
+	    READ_ONCE(msgq_ctx.state) < MSGQ_CONNECTED)
+		return -EAGAIN;
 
 	rc = optee_check_mem_type(start, num_pages);
 	if (rc) {
@@ -536,9 +530,10 @@ static int msgq_shm_release(u64 handle)
 	rc = ghd_rm_mem_reclaim(handle, 0);
 	if (rc)
 		pr_err("reclaim 0x%llx failed: %d\n", handle, rc);
+	else if (sgt)
+		msgq_assign_shared(sgt, false);
 
 	if (sgt) {
-		msgq_assign_shared(sgt, false);
 		sg_free_table(sgt);
 		kfree(sgt);
 	}
@@ -673,7 +668,13 @@ static int msgq_secmem_reclaim(u64 handle)
 		return rc;
 	}
 
-	msgq_assign_lent(mem->sgt, msgq_ctx.peer_vmid, msgq_ctx.self_vmid);
+	rc = msgq_assign_lent(mem->sgt, msgq_ctx.peer_vmid, msgq_ctx.self_vmid);
+	if (rc) {
+		pr_err("assign lent 0x%llx failed: %d\n", handle, rc);
+		kfree(mem);
+		return rc;
+	}
+
 	mitee_free_memory_sgt(mem->size, mem->sgt);
 	kfree(mem);
 	return 0;
@@ -693,6 +694,8 @@ static uint32_t mitee_msgq_rpc_callback(struct optee_msg_param_value *value,
 
 	switch (sub_cmd) {
 	case OPTEE_REE_CALLBACK_ALLOCATE_SECMEM:
+		if (!value->c || value->c > U32_MAX - PAGE_SIZE + 1)
+			return TEEC_ERROR_BAD_PARAMETERS;
 		size = PAGE_ALIGN(value->c);
 		if (msgq_secmem_lend(size, &handle))
 			return TEEC_ERROR_BAD_PARAMETERS;
@@ -749,12 +752,21 @@ static void msgq_handle_ctrl(struct msgq_msg *msg)
 
 	switch (msg->hdr.msg_id) {
 	case MSGQ_CTRL_HELLO:
-		if (msgq_ctx.state >= MSGQ_CONNECTED)
-			pr_err("hello in state %d\n", msgq_ctx.state);
+		if (READ_ONCE(msgq_ctx.state) >= MSGQ_CONNECTED)
+			pr_err("hello in state %d\n", READ_ONCE(msgq_ctx.state));
 		msgq_send(msg, MSGQ_MSG_CTRL, 0);
-		msgq_ctx.state = MSGQ_CONNECTED;
+		WRITE_ONCE(msgq_ctx.state, MSGQ_CONNECTED);
 		break;
 	case MSGQ_CTRL_GET_BUFFERS:
+		while (!wait_for_completion_timeout(&msgq_ctx.msg_buf_ready,
+						    msecs_to_jiffies(100))) {
+			if (READ_ONCE(msgq_ctx.stopping) ||
+			    kthread_should_stop())
+				return;
+		}
+		if (READ_ONCE(msgq_ctx.stopping))
+			return;
+
 		msg->data[0] = MSGQ_SET_STATIC_SHM;
 		msg->data[1] = msgq_ctx.shm.start;
 		msg->data[2] = MSGQ_STATIC_SHM_SIZE;
@@ -781,7 +793,7 @@ static void msgq_handle_ctrl(struct msgq_msg *msg)
 		msgq_send(msg, MSGQ_MSG_FAST_REQ, MSGQ_PAYLOAD_SIZE);
 		break;
 	case MSGQ_CTRL_READY:
-		msgq_ctx.state = MSGQ_READY;
+		WRITE_ONCE(msgq_ctx.state, MSGQ_READY);
 		break;
 	default:
 		pr_info("unknown ctrl id 0x%x\n", msg->hdr.msg_id);
@@ -811,7 +823,7 @@ static void msgq_handle_yield_resp(const struct msgq_msg *msg)
 static void msgq_handle_fast_resp(const struct msgq_msg *msg)
 {
 	spin_lock(&msgq_ctx.fast_lock);
-	if (msgq_ctx.fast_valid) {
+	if (!msgq_ctx.fast_waiting || msgq_ctx.fast_valid) {
 		spin_unlock(&msgq_ctx.fast_lock);
 		pr_err("unexpected fast call reply\n");
 		return;
@@ -836,11 +848,13 @@ static int msgq_recv_thread(void *data)
 	/* mitee_msgq_remove() kills us out of gh_msgq_recv() */
 	allow_signal(SIGKILL);
 
-	while (!kthread_should_stop()) {
+	while (!kthread_should_stop() && !READ_ONCE(msgq_ctx.stopping)) {
 		memset(msg, 0, GH_MSGQ_MAX_MSG_SIZE_BYTES);
 		rc = gh_msgq_recv(msgq_ctx.msgq, msg, GH_MSGQ_MAX_MSG_SIZE_BYTES,
 				  &size, 0);
 		if (rc) {
+			if (READ_ONCE(msgq_ctx.stopping) || kthread_should_stop())
+				break;
 			if (!signal_pending(current))
 				dev_err(msgq_ctx.dev, "receive failed: %d\n", rc);
 			continue;
@@ -893,6 +907,10 @@ static int msgq_yielding_call(union common_args *args)
 	u64 data[5];
 	int rc;
 
+	if (READ_ONCE(msgq_ctx.stopping) ||
+	    READ_ONCE(msgq_ctx.state) < MSGQ_CONNECTED)
+		return -EAGAIN;
+
 	msgq_args_to_payload(args, data);
 	rc = msgq_send_request(MSGQ_MSG_YIELD_REQ, data);
 	if (rc)
@@ -900,6 +918,11 @@ static int msgq_yielding_call(union common_args *args)
 
 	spin_lock(&msgq_ctx.reply_lock);
 	while (msgq_ctx.reply_head == msgq_ctx.reply_tail) {
+		if (READ_ONCE(msgq_ctx.stopping) ||
+		    READ_ONCE(msgq_ctx.state) < MSGQ_CONNECTED) {
+			spin_unlock(&msgq_ctx.reply_lock);
+			return -EIO;
+		}
 		spin_unlock(&msgq_ctx.reply_lock);
 		wait_for_completion(&msgq_ctx.reply_done);
 		spin_lock(&msgq_ctx.reply_lock);
@@ -919,14 +942,31 @@ static int msgq_fast_call(union common_args *args)
 
 	mutex_lock(&msgq_ctx.fast_mutex);
 
+	if (READ_ONCE(msgq_ctx.stopping) ||
+	    READ_ONCE(msgq_ctx.state) < MSGQ_CONNECTED) {
+		rc = -EAGAIN;
+		goto out;
+	}
+
+	spin_lock(&msgq_ctx.fast_lock);
+	msgq_ctx.fast_valid = false;
+	msgq_ctx.fast_waiting = true;
+	reinit_completion(&msgq_ctx.fast_done);
+	spin_unlock(&msgq_ctx.fast_lock);
+
 	msgq_args_to_payload(args, data);
 	rc = msgq_send_request(MSGQ_MSG_FAST_REQ, data);
-	if (rc)
+	if (rc) {
+		spin_lock(&msgq_ctx.fast_lock);
+		msgq_ctx.fast_waiting = false;
+		spin_unlock(&msgq_ctx.fast_lock);
 		goto out;
+	}
 
 	wait_for_completion(&msgq_ctx.fast_done);
 
 	spin_lock(&msgq_ctx.fast_lock);
+	msgq_ctx.fast_waiting = false;
 	if (msgq_ctx.fast_valid) {
 		memcpy(data, msgq_ctx.fast_reply.data, sizeof(data));
 		msgq_ctx.fast_valid = false;
@@ -961,10 +1001,12 @@ static int mitee_msgq_call(union common_args *args)
 	case OPTEE_FFA_SET_MITEE_MSG_BUFFER:
 		msgq_ctx.msg_buf_pa = args->in.param[0];
 		msgq_ctx.msg_buf_size = args->in.param[1];
+		complete_all(&msgq_ctx.msg_buf_ready);
 		return 0;
 	}
 
-	if (msgq_ctx.state < MSGQ_CONNECTED) {
+	if (READ_ONCE(msgq_ctx.stopping) ||
+	    READ_ONCE(msgq_ctx.state) < MSGQ_CONNECTED) {
 		pr_err("msgq didn't set up, try later\n");
 		return -EAGAIN;
 	}
@@ -975,9 +1017,6 @@ static int mitee_msgq_call(union common_args *args)
 	return msgq_fast_call(args);
 }
 
-/*
- * 6. Driver initialization
- */
 static int msgq_rm_notifier(struct notifier_block *nb, unsigned long cmd,
 			    void *data)
 {
@@ -994,7 +1033,9 @@ static int msgq_rm_notifier(struct notifier_block *nb, unsigned long cmd,
 		return NOTIFY_DONE;
 
 	if (payload->vm_status == GH_RM_VM_STATUS_RESET) {
-		msgq_ctx.state = MSGQ_DOWN;
+		WRITE_ONCE(msgq_ctx.state, MSGQ_DOWN);
+		complete_all(&msgq_ctx.reply_done);
+		complete(&msgq_ctx.fast_done);
 		msgq_unshare_static();
 		return NOTIFY_OK;
 	}
@@ -1002,7 +1043,9 @@ static int msgq_rm_notifier(struct notifier_block *nb, unsigned long cmd,
 	if (ghd_rm_get_vmid(GH_PRIMARY_VM, &msgq_ctx.self_vmid))
 		return NOTIFY_DONE;
 	msgq_ctx.peer_vmid = peer_vmid;
-	msgq_ctx.state = MSGQ_VM_UP;
+	reinit_completion(&msgq_ctx.reply_done);
+	reinit_completion(&msgq_ctx.fast_done);
+	WRITE_ONCE(msgq_ctx.state, MSGQ_VM_UP);
 
 	if (msgq_share_contiguous(msgq_ctx.shm.start,
 				  resource_size(&msgq_ctx.shm),
@@ -1055,7 +1098,11 @@ static int mitee_msgq_probe(struct platform_device *pdev)
 	}
 
 	msgq_ctx.dev = &pdev->dev;
-	msgq_ctx.state = MSGQ_DOWN;
+	WRITE_ONCE(msgq_ctx.state, MSGQ_DOWN);
+	WRITE_ONCE(msgq_ctx.stopping, false);
+	msgq_ctx.fast_waiting = false;
+	msgq_ctx.fast_valid = false;
+	init_completion(&msgq_ctx.msg_buf_ready);
 	spin_lock_init(&msgq_ctx.reply_lock);
 	init_completion(&msgq_ctx.reply_done);
 	mutex_init(&msgq_ctx.fast_mutex);
@@ -1102,6 +1149,16 @@ err_destroy_rhash:
 static void mitee_msgq_remove(struct platform_device *pdev)
 {
 	gh_rm_unregister_notifier(&msgq_ctx.rm_nb);
+	mitee_rpc_unregister_callback(REE_CALLBACK_MODULE_TEE_FRAMEWORK,
+				      OPTEE_REE_CALLBACK_ALLOCATE_SECMEM);
+	mitee_rpc_unregister_callback(REE_CALLBACK_MODULE_TEE_FRAMEWORK,
+				      OPTEE_REE_CALLBACK_FREE_SECMEM);
+
+	WRITE_ONCE(msgq_ctx.stopping, true);
+	WRITE_ONCE(msgq_ctx.state, MSGQ_DOWN);
+	complete_all(&msgq_ctx.msg_buf_ready);
+	complete_all(&msgq_ctx.reply_done);
+	complete(&msgq_ctx.fast_done);
 
 	/* gh_msgq_recv() sleeps interruptibly, stop it before the queue goes */
 	send_sig(SIGKILL, msgq_ctx.recv_task, 1);
@@ -1109,6 +1166,21 @@ static void mitee_msgq_remove(struct platform_device *pdev)
 	gh_msgq_unregister(msgq_ctx.msgq);
 
 	msgq_unshare_static();
+
+	while (true) {
+		u64 handle;
+
+		mutex_lock(&msgq_ctx.secmem_mutex);
+		if (list_empty(&msgq_ctx.secmem_list)) {
+			mutex_unlock(&msgq_ctx.secmem_mutex);
+			break;
+		}
+		handle = list_first_entry(&msgq_ctx.secmem_list,
+					  struct msgq_secmem, node)->handle;
+		mutex_unlock(&msgq_ctx.secmem_mutex);
+
+		msgq_secmem_reclaim(handle);
+	}
 
 	rhashtable_free_and_destroy(&msgq_ctx.shm_handles, rh_free_fn, NULL);
 }

@@ -430,6 +430,13 @@ int optee_supp_send(struct tee_context *ctx, u32 ret, u32 num_params,
 
 	mutex_lock(&supp->mutex);
 	req = supp_pop_req(supp, num_params, param, &num_meta);
+	if (IS_ERR(req)) {
+		pr_err("supp_pop_req is failed\n");
+		/* Something is wrong, let supplicant restart. */
+		mutex_unlock(&supp->mutex);
+		return PTR_ERR(req);
+	}
+
 	if (req->timeout == true) {
 		kfree(req);
 		req = NULL;
@@ -440,12 +447,6 @@ int optee_supp_send(struct tee_context *ctx, u32 ret, u32 num_params,
 
 	if (DEBUG_SUPP)
 		pr_err("pop req\n");
-	if (IS_ERR(req)) {
-		pr_err("supp_pop_req is failed\n");
-		/* Something is wrong, let supplicant restart. */
-		mutex_unlock(&supp->mutex);
-		return PTR_ERR(req);
-	}
 
 	/* Update out and in/out parameters */
 	for (n = 0; n < req->num_params; n++) {

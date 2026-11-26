@@ -18,6 +18,7 @@
 
 #include <linux/delay.h>
 #include <linux/i2c.h>
+#include <linux/overflow.h>
 #include <linux/slab.h>
 
 #include <tee_drv.h>
@@ -59,6 +60,15 @@ void mitee_rpc_callback_queue_init(struct mitee_rpc_callback_queue *queue)
 
 void mitee_rpc_callback_queue_deinit(struct mitee_rpc_callback_queue *queue)
 {
+	struct callback_item *item;
+	struct callback_item *tmp;
+
+	mutex_lock(&queue->mut);
+	list_for_each_entry_safe(item, tmp, &queue->item, link) {
+		list_del(&item->link);
+		kfree(item);
+	}
+	mutex_unlock(&queue->mut);
 	mutex_destroy(&queue->mut);
 }
 
@@ -92,8 +102,10 @@ static void handle_rpc_func_cmd_i2c_transfer(struct tee_context *ctx,
 {
 	struct optee *optee = tee_get_drvdata(ctx->teedev);
 	struct tee_param *params;
+	struct tee_shm *shm;
 	struct i2c_adapter *adapter;
 	struct i2c_msg msg = {};
+	size_t shm_offs;
 	size_t i;
 	int ret = -EOPNOTSUPP;
 	u8 attr[] = {
@@ -137,8 +149,18 @@ static void handle_rpc_func_cmd_i2c_transfer(struct tee_context *ctx,
 		msg.flags = I2C_M_TEN;
 	}
 
+	shm = params[2].u.memref.shm;
+	if (!shm || !shm->kaddr ||
+	    check_add_overflow(params[2].u.memref.shm_offs,
+			       params[2].u.memref.size, &shm_offs) ||
+	    shm_offs > shm->size ||
+	    params[2].u.memref.size > U16_MAX) {
+		i2c_put_adapter(adapter);
+		goto bad;
+	}
+
 	msg.addr = params[0].u.value.c;
-	msg.buf = params[2].u.memref.shm->kaddr;
+	msg.buf = (u8 *)shm->kaddr + params[2].u.memref.shm_offs;
 	msg.len = params[2].u.memref.size;
 
 	switch (params[0].u.value.a) {
@@ -370,6 +392,8 @@ static void handle_rpc_func_cmd_bm_reg(struct optee_msg_arg *arg)
 		size = arg->params[0].u.value.c;
 		paddr = arg->params[0].u.value.b;
 		down_write(&optee_bench_ts_rwsem);
+		if (optee_bench_ts_global)
+			memunmap(optee_bench_ts_global);
 		optee_bench_ts_global = memremap(paddr, size, MEMREMAP_WB);
 		if (!optee_bench_ts_global) {
 			up_write(&optee_bench_ts_rwsem);
@@ -417,6 +441,7 @@ void mitee_rpc_register_callback(uint32_t module_id, uint32_t cmd,
 		// if find the same module_id, replace it
 		if (item->module_id == module_id && item->cmd == cmd) {
 			list_del(&item->link);
+			kfree(item);
 			list_add_tail(&new_item->link, &queue->item);
 			mutex_unlock(&queue->mut);
 			return;
@@ -424,6 +449,27 @@ void mitee_rpc_register_callback(uint32_t module_id, uint32_t cmd,
 	}
 
 	list_add_tail(&new_item->link, &queue->item);
+	mutex_unlock(&queue->mut);
+}
+
+void mitee_rpc_unregister_callback(uint32_t module_id, uint32_t cmd)
+{
+	struct optee *optee = get_optee_drv_state();
+	struct mitee_rpc_callback_queue *queue;
+	struct callback_item *item;
+	struct callback_item *tmp;
+
+	if (!optee)
+		return;
+
+	queue = &optee->cb_queue;
+	mutex_lock(&queue->mut);
+	list_for_each_entry_safe(item, tmp, &queue->item, link) {
+		if (item->module_id == module_id && item->cmd == cmd) {
+			list_del(&item->link);
+			kfree(item);
+		}
+	}
 	mutex_unlock(&queue->mut);
 }
 
@@ -457,7 +503,16 @@ static int optee_msg_arg_to_callback_para(struct optee_msg_arg *arg, struct opte
 			return rc;
 		}
 
+		if (arg->params[2].u.tmem.buf_ptr < pa) {
+			pr_err("mitee: callback buf_ptr out of bounds\n");
+			return -EINVAL;
+		}
+
 		*va = (char *)tee_shm_get_va(shm, arg->params[2].u.tmem.buf_ptr - pa);
+		if (IS_ERR(*va)) {
+			pr_err("mitee: callback invalid shm va, rc %ld\n", PTR_ERR(*va));
+			return PTR_ERR(*va);
+		}
 		*size = (uint32_t)arg->params[2].u.tmem.size;
 	}
 
@@ -474,37 +529,57 @@ static void handle_rpc_cmd_callback(struct optee *optee,
 {
 	struct mitee_rpc_callback_queue *queue = &optee->cb_queue;
 	struct callback_item *item = NULL;
-	uint32_t module_id = (uint32_t)arg->params[0].u.value.b;
-	uint32_t cmd = (uint32_t)arg->params[0].u.value.a;
+	uint32_t (*cb)(struct optee_msg_param_value *value, void *buf,
+		       uint32_t size_in, uint32_t *size_out) = NULL;
+	uint32_t module_id;
+	uint32_t cmd;
+
+	if (arg->num_params < 1) {
+		arg->ret = TEEC_ERROR_BAD_PARAMETERS;
+		return;
+	}
+
+	module_id = (uint32_t)arg->params[0].u.value.b;
+	cmd = (uint32_t)arg->params[0].u.value.a;
+
+	if (cmd == OPTEE_REE_CALLBACK_CALL && arg->num_params < 3) {
+		arg->ret = TEEC_ERROR_BAD_PARAMETERS;
+		return;
+	}
 
 	mutex_lock(&queue->mut);
 	list_for_each_entry(item, &queue->item, link) {
-		if (item->module_id == module_id && item->cmd == cmd && item->callback != NULL) {
-			if (cmd == OPTEE_REE_CALLBACK_CALL) {
-				void *va = NULL;
-				uint32_t size_in = 0;
-				uint32_t size_out = 0;
-				struct optee_msg_param_value *value = NULL;
-				int rc;
-
-				rc = optee_msg_arg_to_callback_para(arg, &value, &va, &size_in);
-				if (!rc) {
-					rc = item->callback(value, va, size_in, &size_out);
-					update_optee_msg_arg(arg, size_out);
-					arg->ret = rc;
-				} else {
-					pr_err("mitee callback msg_arg invalid %d\n", rc);
-					arg->ret = TEEC_ERROR_BAD_PARAMETERS;
-				}
-			} else {
-				arg->ret = item->callback(&arg->params[0].u.value, NULL, 0, NULL);
-			}
-
-			mutex_unlock(&queue->mut);
-			return;
+		if (item->module_id == module_id && item->cmd == cmd) {
+			cb = item->callback;
+			break;
 		}
 	}
 	mutex_unlock(&queue->mut);
+
+	if (!cb) {
+		arg->ret = TEEC_ERROR_ITEM_NOT_FOUND;
+		return;
+	}
+
+	if (cmd == OPTEE_REE_CALLBACK_CALL) {
+		void *va = NULL;
+		uint32_t size_in = 0;
+		uint32_t size_out = 0;
+		struct optee_msg_param_value *value = NULL;
+		int rc;
+
+		rc = optee_msg_arg_to_callback_para(arg, &value, &va, &size_in);
+		if (!rc) {
+			rc = cb(value, va, size_in, &size_out);
+			update_optee_msg_arg(arg, size_out);
+			arg->ret = rc;
+		} else {
+			pr_err("mitee callback msg_arg invalid %d\n", rc);
+			arg->ret = TEEC_ERROR_BAD_PARAMETERS;
+		}
+	} else {
+		arg->ret = cb(&arg->params[0].u.value, NULL, 0, NULL);
+	}
 }
 
 void optee_rpc_cmd(struct tee_context *ctx, struct optee *optee,

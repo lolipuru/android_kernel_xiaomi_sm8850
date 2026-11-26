@@ -524,37 +524,6 @@ static int params_to_user(struct tee_ioctl_param __user *uparams,
 	return 0;
 }
 
-static int auth_ca_name(void)
-{
-	char *ca_path = NULL;
-	char tpath[MAX_TPATH_LEN];
-	const char *white_list[] = {
-		"/vendor/bin",
-		"/odm/bin",
-		"/apex/com.google.android.widevine/bin/hw"
-	};
-	int index = 0;
-
-	memset(tpath, 0, sizeof(tpath));
-	ca_path = d_path(&(current->active_mm->exe_file->f_path), tpath, MAX_TPATH_LEN);
-
-	for (; index < ARRAY_SIZE(white_list); index++) {
-		int capath_len = strlen(ca_path);
-		int wpath_len = strlen(white_list[index]);
-		/* check if the path is the same or the sub dir*/
-		if (((capath_len == wpath_len) || (capath_len > wpath_len && ca_path[wpath_len] == '/'))
-		    && !strncmp(ca_path, white_list[index], wpath_len))
-			break;
-	}
-
-	/* match one white list */
-	if (index < ARRAY_SIZE(white_list))
-		return 0;
-
-	pr_err("fail to auth ca path: %s\n", ca_path);
-	return -1;
-}
-
 static int tee_ioctl_open_session(struct tee_context *ctx,
 				  struct tee_ioctl_buf_data __user *ubuf)
 {
@@ -566,11 +535,6 @@ static int tee_ioctl_open_session(struct tee_context *ctx,
 	struct tee_ioctl_param __user *uparams = NULL;
 	struct tee_param *params = NULL;
 	bool have_session = false;
-
-	if (auth_ca_name() != 0) {
-		pr_err("auth ca name error\n");
-		return -EINVAL;
-	}
 
 	if (!ctx->teedev->desc->ops->open_session) {
 		pr_err("open_session is failed\n");

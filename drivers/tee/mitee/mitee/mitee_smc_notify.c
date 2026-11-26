@@ -60,7 +60,6 @@ unsigned int mitee_smc_notify_connect(uint8_t module_id,  unsigned int magic_num
 	// return connect token
 	return (unsigned int)ret;
 }
-EXPORT_SYMBOL_GPL(mitee_smc_notify_connect);
 
 /* linux kernel send signal to mitee */
 int mitee_smc_notify_signal(uint8_t module_id, unsigned int token, const uint8_t challenge)
@@ -74,7 +73,6 @@ int mitee_smc_notify_signal(uint8_t module_id, unsigned int token, const uint8_t
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(mitee_smc_notify_signal);
 
 /* linux kernel send data to mitee */
 int mitee_smc_notify_data(uint8_t module_id, unsigned int token,
@@ -85,6 +83,9 @@ int mitee_smc_notify_data(uint8_t module_id, unsigned int token,
 	uint16_t curr_size = 0u;
 	uint64_t data_buf[3] = {0};
 
+	if (!data && data_size)
+		return -EINVAL;
+
 	if (left_size > 24u)
 		curr_size = 24u;
 	else
@@ -92,10 +93,13 @@ int mitee_smc_notify_data(uint8_t module_id, unsigned int token,
 
 	left_size -= curr_size;
 
-	memcpy(data_buf, data, curr_size);
+	if (curr_size)
+		memcpy(data_buf, data, curr_size);
 	/* inform the data size in the first smc call */
 	ret = mitee_smc_notify_send(module_id, MITEE_NOTIFICATION_TYPE_DATA,
 				token, data_size, data_buf[0], data_buf[1], data_buf[2]);
+	if (ret)
+		return ret;
 	/* data fragment */
 	while (left_size > 0) {
 		if (left_size > 24u)
@@ -104,10 +108,13 @@ int mitee_smc_notify_data(uint8_t module_id, unsigned int token,
 			curr_size = left_size;
 
 		left_size -= curr_size;
-		memcpy(data_buf, data + (data_size - left_size - curr_size), curr_size);
+		memset(data_buf, 0, sizeof(data_buf));
+		memcpy(data_buf, (const u8 *)data + (data_size - left_size - curr_size),
+		       curr_size);
 		ret = mitee_smc_notify_send(module_id, MITEE_NOTIFICATION_TYPE_DATAFRAG,
 				token, curr_size, data_buf[0], data_buf[1], data_buf[2]);
+		if (ret)
+			return ret;
 	}
 	return 0;
 }
-EXPORT_SYMBOL_GPL(mitee_smc_notify_data);

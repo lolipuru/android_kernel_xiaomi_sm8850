@@ -19,6 +19,7 @@
 #include <linux/fs.h>
 #include <linux/jiffies.h>
 #include <linux/minmax.h>
+#include <linux/mutex.h>
 #include <linux/poll.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
@@ -33,8 +34,11 @@
 #define TUI_RESPONSE_TIMEOUT_MS	5000
 
 /* command for the TUI service and its response */
+static DEFINE_MUTEX(tui_cmd_mutex);
+static DEFINE_MUTEX(tui_state_mutex);
 static struct mitee_tui_command_t tui_cmd;
 static struct mitee_tui_response_t tui_rsp;
+static bool tui_waiting;
 static DECLARE_COMPLETION(tui_rsp_done);
 
 /* a command is pending, reported through poll() */
@@ -43,9 +47,11 @@ static atomic_t tui_event = ATOMIC_INIT(0);
 static atomic_t tui_opened = ATOMIC_INIT(0);
 
 /* notification token for cancelling a TUI session from the REE */
+static DEFINE_MUTEX(tui_token_mutex);
 static int tui_token;
 
 /* font being copied to the TA, chunk by chunk */
+static DEFINE_MUTEX(tui_font_mutex);
 static struct {
 	struct tui_shm *shm;
 	u64 size;
@@ -58,8 +64,10 @@ static const struct class tui_class = {
 static dev_t tui_devt;
 static struct cdev tui_cdev;
 
-static uint32_t send_cmd_to_user(uint32_t command_id)
+static uint32_t send_cmd_to_user(uint32_t command_id,
+				 struct mitee_tui_response_t *rsp_out)
 {
+	struct mitee_tui_response_t rsp;
 	uint32_t ret;
 
 	if (!atomic_read(&tui_opened)) {
@@ -67,8 +75,14 @@ static uint32_t send_cmd_to_user(uint32_t command_id)
 		return TUI_ERR_INTERNAL_ERROR;
 	}
 
+	mutex_lock(&tui_cmd_mutex);
+
+	mutex_lock(&tui_state_mutex);
 	reinit_completion(&tui_rsp_done);
+	memset(&tui_rsp, 0, sizeof(tui_rsp));
 	tui_cmd.id = command_id;
+	tui_waiting = true;
+	mutex_unlock(&tui_state_mutex);
 
 	/* let the service know (poll) that there is a command to process */
 	atomic_set(&tui_event, 1);
@@ -81,15 +95,21 @@ static uint32_t send_cmd_to_user(uint32_t command_id)
 		goto out;
 	}
 
-	if (tui_rsp.id != command_id) {
-		pr_err("wrong response id %u to command %u\n", tui_rsp.id,
+	mutex_lock(&tui_state_mutex);
+	rsp = tui_rsp;
+	mutex_unlock(&tui_state_mutex);
+
+	if (rsp.id != command_id) {
+		pr_err("wrong response id %u to command %u\n", rsp.id,
 		       command_id);
 		ret = TUI_ERR_INTERNAL_ERROR;
 		goto out;
 	}
 
-	switch (tui_rsp.return_code) {
+	switch (rsp.return_code) {
 	case MITEE_TUI_OK:
+		if (rsp_out)
+			*rsp_out = rsp;
 		ret = TUI_OK;
 		break;
 	case MITEE_TUI_ERR_UNKNOWN_CMD:
@@ -101,11 +121,15 @@ static uint32_t send_cmd_to_user(uint32_t command_id)
 	}
 
 out:
+	mutex_lock(&tui_state_mutex);
+	tui_waiting = false;
 	tui_cmd.id = MITEE_TUI_CMD_NONE;
+	mutex_unlock(&tui_state_mutex);
+	mutex_unlock(&tui_cmd_mutex);
 	return ret;
 }
 
-static void tui_font_release(void)
+static void tui_font_release_locked(void)
 {
 	if (!tui_font.shm)
 		return;
@@ -125,36 +149,44 @@ static void tui_font_release(void)
 static uint32_t tui_get_font(struct optee_msg_param_value *value, void *buf,
 			     uint32_t size_in, uint32_t *size_out)
 {
+	struct mitee_tui_response_t rsp;
 	u64 offset = value->c;
 	struct tui_shm *shm;
 	uint32_t ret;
 	u64 size;
 
+	mutex_lock(&tui_font_mutex);
 	if (offset == 0) {
-		tui_font_release();
+		tui_font_release_locked();
 
-		ret = send_cmd_to_user(MITEE_TUI_CMD_GET_FONT_BUFFER);
-		if (ret != TUI_OK)
+		ret = send_cmd_to_user(MITEE_TUI_CMD_GET_FONT_BUFFER, &rsp);
+		if (ret != TUI_OK) {
+			mutex_unlock(&tui_font_mutex);
 			return ret;
+		}
 
-		shm = tui_shm_get_by_id(tui_rsp.data.fontShm.shm_id);
+		shm = tui_shm_get_by_id(rsp.data.fontShm.shm_id);
 		if (IS_ERR(shm)) {
 			pr_err("no font buffer %d\n",
-			       tui_rsp.data.fontShm.shm_id);
+			       rsp.data.fontShm.shm_id);
+			mutex_unlock(&tui_font_mutex);
 			return TUI_ERR_BAD_PARAMETERS;
 		}
-		if (tui_rsp.data.fontShm.shm_size > shm->size) {
+		if (rsp.data.fontShm.shm_size > shm->size) {
 			pr_err("font size %llu over buffer size %zu\n",
-			       tui_rsp.data.fontShm.shm_size, shm->size);
+			       rsp.data.fontShm.shm_size, shm->size);
 			tui_shm_put(shm);
+			mutex_unlock(&tui_font_mutex);
 			return TUI_ERR_BAD_PARAMETERS;
 		}
 		tui_font.shm = shm;
-		tui_font.size = tui_rsp.data.fontShm.shm_size;
+		tui_font.size = rsp.data.fontShm.shm_size;
 	}
 
-	if (!tui_font.shm || offset > tui_font.size)
+	if (!tui_font.shm || offset > tui_font.size) {
+		mutex_unlock(&tui_font_mutex);
 		return TUI_ERR_BAD_PARAMETERS;
+	}
 
 	size = min3(value->b, (u64)size_in, tui_font.size - offset);
 	memcpy(buf, tui_font.shm->vaddr + offset, size);
@@ -163,8 +195,9 @@ static uint32_t tui_get_font(struct optee_msg_param_value *value, void *buf,
 	*size_out = size;
 
 	if (offset + size >= tui_font.size)
-		tui_font_release();
+		tui_font_release_locked();
 
+	mutex_unlock(&tui_font_mutex);
 	return TUI_OK;
 }
 
@@ -172,6 +205,7 @@ static uint32_t tui_process_tuisvc_callback(struct optee_msg_param_value *value,
 					    void *buf, uint32_t size_in,
 					    uint32_t *size_out)
 {
+	struct mitee_tui_response_t rsp;
 	uint32_t command_id = value->a;
 	struct screen_info_t *info = buf;
 	uint32_t ret;
@@ -181,20 +215,20 @@ static uint32_t tui_process_tuisvc_callback(struct optee_msg_param_value *value,
 		if (!buf || size_in < sizeof(*info))
 			return TUI_ERR_BAD_PARAMETERS;
 
-		ret = send_cmd_to_user(MITEE_TUI_CMD_GET_RESOLUTION);
+		ret = send_cmd_to_user(MITEE_TUI_CMD_GET_RESOLUTION, &rsp);
 		if (ret != TUI_OK)
 			break;
 
 		memset(info, 0, sizeof(*info));
-		info->width = tui_rsp.data.resolution.width;
-		info->height = tui_rsp.data.resolution.height;
+		info->width = rsp.data.resolution.width;
+		info->height = rsp.data.resolution.height;
 		*size_out = sizeof(*info);
 		break;
 	case CMD_TUI_SVC_OPEN_SESSION:
-		ret = send_cmd_to_user(MITEE_TUI_CMD_OPEN_SESSION);
+		ret = send_cmd_to_user(MITEE_TUI_CMD_OPEN_SESSION, NULL);
 		break;
 	case CMD_TUI_SVC_CLOSE_SESSION:
-		ret = send_cmd_to_user(MITEE_TUI_CMD_CLOSE_SESSION);
+		ret = send_cmd_to_user(MITEE_TUI_CMD_CLOSE_SESSION, NULL);
 		if (ret == TUI_OK)
 			value->a = 0;
 		break;
@@ -220,16 +254,21 @@ static bool tui_token_valid(void)
 
 static int tui_notify_cancel(void)
 {
+	int token;
 	int rc;
 
+	mutex_lock(&tui_token_mutex);
 	if (!tui_token_valid())
 		tui_token = mitee_smc_notify_connect(TUI_SVC_ID, TUI_MAGIC_NUM);
 	if (!tui_token_valid()) {
 		pr_err("notify connect failed: %d\n", tui_token);
+		mutex_unlock(&tui_token_mutex);
 		return -EIO;
 	}
+	token = tui_token;
+	mutex_unlock(&tui_token_mutex);
 
-	rc = mitee_smc_notify_signal(TUI_SVC_ID, tui_token, TUI_NOTIFY_CANCEL);
+	rc = mitee_smc_notify_signal(TUI_SVC_ID, token, TUI_NOTIFY_CANCEL);
 	if (rc)
 		pr_err("notify signal failed: %d\n", rc);
 
@@ -239,16 +278,25 @@ static int tui_notify_cancel(void)
 static int tui_ioctl_ack(void __user *uarg)
 {
 	struct tui_ioctl_buf_data data;
+	struct mitee_tui_response_t rsp = {};
 
 	if (copy_from_user(&data, uarg, sizeof(data)))
 		return -EFAULT;
-	if (data.buf_len > sizeof(tui_rsp))
+	if (data.buf_len > sizeof(rsp))
 		return -EINVAL;
-	if (copy_from_user(&tui_rsp, u64_to_user_ptr(data.buf_ptr),
+	if (copy_from_user(&rsp, u64_to_user_ptr(data.buf_ptr),
 			   data.buf_len))
 		return -EFAULT;
 
+	mutex_lock(&tui_state_mutex);
+	if (!tui_waiting) {
+		mutex_unlock(&tui_state_mutex);
+		return -EINVAL;
+	}
+	tui_rsp = rsp;
+	tui_waiting = false;
 	complete(&tui_rsp_done);
+	mutex_unlock(&tui_state_mutex);
 	return 0;
 }
 
@@ -289,14 +337,17 @@ static int tui_ioctl_tui_shm_alloc(void __user *uarg)
 		fput(file);
 		put_unused_fd(fd);
 		tui_shm_remove(shm);
+		tui_shm_put(shm);
 		return -EFAULT;
 	}
 
 	fd_install(fd, file);
+	tui_shm_put(shm);
 	return 0;
 
 err_remove_shm:
 	tui_shm_remove(shm);
+	tui_shm_put(shm);
 	return fd;
 }
 
@@ -322,13 +373,17 @@ static int tui_ioctl_tui_shm_free(void __user *uarg)
 static long tui_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
 	void __user *uarg = (void __user *)arg;
+	struct mitee_tui_command_t user_cmd;
 
 	switch (cmd) {
 	case TUI_IO_NOTIFY:
 	case TUI_CLOSE_SESSION:
 		return 0;
 	case TUI_IO_WAITCMD:
-		if (copy_to_user(uarg, &tui_cmd, sizeof(tui_cmd)))
+		mutex_lock(&tui_state_mutex);
+		user_cmd = tui_cmd;
+		mutex_unlock(&tui_state_mutex);
+		if (copy_to_user(uarg, &user_cmd, sizeof(user_cmd)))
 			return -EFAULT;
 		return 0;
 	case TUI_IO_ACK:
@@ -431,12 +486,17 @@ void mitee_tui_exit(void)
 {
 	int i;
 
+	mitee_rpc_unregister_callback(REE_CALLBACK_MODULE_TEE_TUI,
+				      OPTEE_REE_CALLBACK_CALL);
+
 	for (i = 0; i < ARRAY_SIZE(tui_dev_names); i++)
 		device_destroy(&tui_class, tui_devt + i);
 	class_unregister(&tui_class);
 	cdev_del(&tui_cdev);
 	unregister_chrdev_region(tui_devt, ARRAY_SIZE(tui_dev_names));
 
-	tui_font_release();
+	mutex_lock(&tui_font_mutex);
+	tui_font_release_locked();
+	mutex_unlock(&tui_font_mutex);
 	tui_shm_deinit();
 }

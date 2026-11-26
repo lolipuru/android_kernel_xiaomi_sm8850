@@ -45,7 +45,6 @@
  * 6. Initialization and Uninstallation of Mitee Driver
  */
 
-struct mutex tee_mutex;
 static struct optee *optee_svc;
 
 static ulong  bind_core_mask = -1;
@@ -223,6 +222,7 @@ static int mitee_parse_dts(struct optee *optee)
 	rc = mitee_get_cpu_allows(dev_node, &optee->cpus_allowed);
 	if (rc) {
 		pr_err("get cpu allowed failed: %s\n", MITEE_COMPATIBLE);
+		of_node_put(dev_node);
 		return rc;
 	}
 
@@ -242,11 +242,12 @@ static int mitee_parse_dts(struct optee *optee)
 			optee->workers_count = workers_count;
 	}
 
-	pr_err("workers_count: %u\n", optee->workers_count);
+	pr_info("workers_count: %u\n", optee->workers_count);
 
 	rc = mitee_get_comm_ops(dev_node, &optee->comm_ops);
+	of_node_put(dev_node);
 	if (rc) {
-		pr_err("get cpu allowed failed: %s\n", MITEE_COMPATIBLE);
+		pr_err("get comm ops failed: %s\n", MITEE_COMPATIBLE);
 		return rc;
 	}
 
@@ -501,6 +502,7 @@ static int optee_do_call_with_arg(struct tee_context *ctx,
 			task = mitee_task_alloc(ctx, MITEE_REE_REQUEST, msg_arg);
 			if (IS_ERR(task)) {
 				pr_err("mitee task alloc failed\n");
+				atomic_set(&optee->workers[id].active, 0);
 				rc = -ENOMEM;
 				goto err_sem;
 
@@ -517,6 +519,7 @@ static int optee_do_call_with_arg(struct tee_context *ctx,
 
 	if (!found) {
 		pr_err("%s:found idle mitee worker failed\n", __func__);
+		rc = -EBUSY;
 		goto err_sem;
 
 	}
@@ -895,6 +898,18 @@ static int mitee_core_init(void)
 	rpc_arg_count = THREAD_RPC_MAX_NUM_PARAMS;
 #endif
 
+	rc = mitee_msg_queue_init(&optee->msg_queue);
+	if (rc) {
+		pr_err("failed to init mitee msg queue (%d)\n", rc);
+		goto err_comm_deinit;
+	}
+
+	rc = mitee_msg_queue_register(optee);
+	if (rc) {
+		pr_err("failed to register mitee msg queue (%d)\n", rc);
+		goto err_msg_queue_free;
+	}
+
 	optee->pool = ERR_PTR(-EINVAL);
 
 	/* reserved share memory pool for data less than 128KB */
@@ -906,7 +921,7 @@ static int mitee_core_init(void)
 	if (IS_ERR(optee->pool)) {
 		rc = PTR_ERR(optee->pool);
 		optee->pool = NULL;
-		goto err_comm_deinit;
+		goto err_msg_queue_free;
 	}
 
 	optee->ops = &optee_param_ops;
@@ -951,12 +966,16 @@ static int mitee_core_init(void)
 	/* mitee log device function START */
 	ATOMIC_INIT_NOTIFIER_HEAD(&optee->notifier);
 	optee->mitee_memlog_pdev = platform_device_alloc("mitee_memlog", 0);
-	if (IS_ERR_OR_NULL(optee->mitee_memlog_pdev)) {
-		rc = PTR_ERR(teedev);
+	if (!optee->mitee_memlog_pdev) {
+		rc = -ENOMEM;
 		goto err_unregister_devices;
 	}
 
-	(void)platform_device_add(optee->mitee_memlog_pdev);
+	rc = platform_device_add(optee->mitee_memlog_pdev);
+	if (rc) {
+		platform_device_put(optee->mitee_memlog_pdev);
+		goto err_unregister_devices;
+	}
 
 	rc = mitee_memlog_probe(optee->mitee_memlog_pdev);
 	if (rc) {
@@ -967,18 +986,6 @@ static int mitee_core_init(void)
 
 	/* mitee task function START */
 	sema_init(&optee->sem, optee->workers_count);
-
-	rc = mitee_msg_queue_init(&optee->msg_queue);
-	if (rc) {
-		pr_err("failed to init mitee msg queue (%d)\n", rc);
-		goto err_memlog_remove;
-	}
-
-	rc = mitee_msg_queue_register();
-	if (rc) {
-		pr_err("failed to register mitee msg queue (%d)\n", rc);
-		goto err_msg_queue_free;
-	}
 
 	mitee_task_list_init(&optee->task_list);
 
@@ -1029,22 +1036,23 @@ static int mitee_core_init(void)
 	return 0;
 
 err_free_workers:
+	while (cnt--)
+		kthread_stop(optee->workers[cnt].p);
 	kfree(optee->workers);
 err_task_list_deinit:
 	mitee_task_list_deinit(&optee->task_list);
-err_msg_queue_free:
-	mitee_msg_queue_deinit(&optee->msg_queue);
-err_memlog_remove:
-	(void)mitee_memlog_remove(optee->mitee_memlog_pdev);
 err_memlog_device_del:
-	platform_device_del(optee->mitee_memlog_pdev);
+	platform_device_unregister(optee->mitee_memlog_pdev);
 err_unregister_devices:
 #if MITEE_FEATURE_FW_NP_ENABLE
 	optee_unregister_devices();
 err_supp_free:
 #endif
+	optee_svc = NULL;
+	mitee_dynamic_mem_deinit();
 	optee_supp_uninit(&optee->supp);
-	mutex_destroy(&tee_mutex);
+	mitee_rpc_callback_queue_deinit(&optee->cb_queue);
+	optee_wait_queue_exit(&optee->wait_queue);
 	mutex_destroy(&optee->call_queue.mutex);
 err_unreg_supp_teedev:
 	/*
@@ -1060,6 +1068,8 @@ err_free_pool:
 		tee_shm_pool_free(optee->pool);
 	if (memremaped_shm)
 		memunmap(memremaped_shm);
+err_msg_queue_free:
+	mitee_msg_queue_deinit(&optee->msg_queue);
 err_comm_deinit:
 	optee->comm_ops->deinit();
 err_free_optee:
@@ -1072,29 +1082,41 @@ module_init(mitee_core_init);
 
 static void optee_core_exit(void)
 {
-	pr_info("enter\n");
 	struct optee *optee = get_optee_drv_state();
 	u32 cnt = 0;
+
+	pr_info("enter\n");
+	if (!optee)
+		return;
 
 	if (optee->tui_supported)
 		mitee_tui_exit();
 
 	optee_remove_common(optee);
-	mutex_destroy(&tee_mutex);
+
+	mitee_memlog_remove(optee->mitee_memlog_pdev);
+	platform_device_unregister(optee->mitee_memlog_pdev);
+
+	for (cnt = 0; cnt < optee->workers_count; cnt++) {
+		complete(&optee->workers[cnt].c);
+		kthread_stop(optee->workers[cnt].p);
+	}
+	kfree(optee->workers);
+	mitee_task_list_deinit(&optee->task_list);
+	mitee_msg_queue_deinit(&optee->msg_queue);
 
 	optee->comm_ops->deinit();
 	mitee_rpc_callback_queue_deinit(&optee->cb_queue);
 	mitee_dynamic_mem_deinit();
 
-	mitee_msg_queue_deinit(&optee->msg_queue);
-	mitee_task_list_deinit(&optee->task_list);
-	for (cnt = 0; cnt < optee->workers_count; cnt++)
-		kthread_stop(optee->workers[cnt].p);
+	if (optee->memremaped_shm)
+		memunmap(optee->memremaped_shm);
 
-	kfree(optee->workers);
+	optee_svc = NULL;
 	kfree(optee);
 	optee_bm_disable();
 	mitee_bench_disable();
+	mitee_tee_exit();
 
 	pr_info("succ\n");
 }
@@ -1105,4 +1127,3 @@ MODULE_DESCRIPTION("OP-TEE driver");
 MODULE_VERSION("1.0");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:optee");
-MODULE_SOFTDEP("pre: xr_ffa-module");

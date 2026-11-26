@@ -18,5 +18,6 @@
 
 void mitee_rpc_register_callback(uint32_t module_id, uint32_t cmd, uint32_t (*callback)(struct optee_msg_param_value *value,
 										   void *buf, uint32_t size_in, uint32_t *size_out));
+void mitee_rpc_unregister_callback(uint32_t module_id, uint32_t cmd);
 
 #endif

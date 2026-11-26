@@ -92,9 +92,11 @@ struct mitee_task_list {
 	struct list_head list;
 };
 
+struct optee;
+
 int32_t mitee_msg_queue_init(struct mitee_msg_queue *queue);
 int32_t mitee_msg_queue_deinit(struct mitee_msg_queue *queue);
-int32_t mitee_msg_queue_register(void);
+int32_t mitee_msg_queue_register(struct optee *optee);
 
 void mitee_task_list_init(struct mitee_task_list *task_list);
 void mitee_task_list_deinit(struct mitee_task_list *task_list);

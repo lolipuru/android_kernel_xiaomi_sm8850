@@ -23,6 +23,7 @@
 #include <linux/atomic.h>
 #include <linux/mutex.h>
 #include <linux/idr.h>
+#include <linux/kthread.h>
 #include <linux/crc32.h>
 #include "optee_ffa.h"
 #include "optee_private.h"
@@ -106,10 +107,9 @@ union msgq_args {
 	} out;
 };
 
-int32_t mitee_msg_queue_register(void)
+int32_t mitee_msg_queue_register(struct optee *optee)
 {
 	int32_t rc = 0;
-	struct optee *optee = get_optee_drv_state();
 	union msgq_args args;
 
 	if (!optee) {
@@ -197,8 +197,8 @@ static int32_t mitee_msg_dequeue(struct shm_mem_msg *msg)
 	return 0;
 }
 
-static void mitee_msg_pack(uint32_t msg_id, uint32_t msg_type,
-			   struct optee_msg_arg *arg, struct shm_mem_msg *msg)
+static int32_t mitee_msg_pack(uint32_t msg_id, uint32_t msg_type,
+			      struct optee_msg_arg *arg, struct shm_mem_msg *msg)
 {
 	struct timespec64 t;
 	uint32_t sz = 0;
@@ -211,6 +211,8 @@ static void mitee_msg_pack(uint32_t msg_id, uint32_t msg_type,
 	msg->msg_id = msg_id;
 
 	if (arg != NULL) {
+		if (arg->num_params > MITEE_MSG_MAX_NUM_PARAMS)
+			return -EINVAL;
 		sz = OPTEE_MSG_GET_ARG_SIZE(arg->num_params);
 		memcpy(payload, arg, sz);
 	} else {
@@ -227,6 +229,7 @@ static void mitee_msg_pack(uint32_t msg_id, uint32_t msg_type,
 #else
 	msg->crc = 0;
 #endif
+	return 0;
 }
 
 static int32_t mitee_msg_unpack(struct shm_mem_msg *msg, uint32_t *msg_id,
@@ -309,6 +312,7 @@ struct mitee_task *mitee_task_alloc(struct tee_context *ctx, uint32_t type,
 				     REE_REQUEST_MAX_ID, GFP_KERNEL);
 		if (task->id <= 0) {
 			mutex_unlock(&task_list->lock);
+			kfree(task);
 			return ERR_PTR(-EINVAL);
 		}
 
@@ -319,6 +323,7 @@ struct mitee_task *mitee_task_alloc(struct tee_context *ctx, uint32_t type,
 		mutex_unlock(&task_list->lock);
 	} else {
 		pr_err("invalid param\n");
+		kfree(task);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -335,7 +340,8 @@ void mitee_task_free(int32_t id)
 	task = idr_find(&task_list->idr, id);
 	if (!task) {
 		pr_warn("task id invalid\n");
-		BUG_ON(0);
+		mutex_unlock(&task_list->lock);
+		return;
 	}
 
 	idr_remove(&task_list->idr, id);
@@ -489,6 +495,7 @@ static int32_t mitee_yielding_call(struct optee *optee, uint32_t worker_id)
 	struct shm_mem_msg msg_recv;
 	struct optee_msg_arg *arg_addr = NULL;
 	int32_t rc = 0;
+	int32_t orig_task_id = -1;
 	int32_t msg_id = 0;
 	uint32_t msg_type = 0;
 	uint32_t sz = 0;
@@ -507,10 +514,13 @@ static int32_t mitee_yielding_call(struct optee *optee, uint32_t worker_id)
 		pr_info("task list empty\n");
 		goto deactive_worker;
 	}
+	orig_task_id = task->id;
 	if (DEBUG_CALL)
 		pr_info("mitee worker[%d] task[%d] +++\n", worker_id, task->id);
 
-	mitee_msg_pack(task->id, task->type, task->legacy_msg, &msg);
+	rc = mitee_msg_pack(task->id, task->type, task->legacy_msg, &msg);
+	if (rc)
+		goto deactive_worker;
 
 	task->status = MITEE_TASK_SENT;
 
@@ -588,8 +598,10 @@ static int32_t mitee_yielding_call(struct optee *optee, uint32_t worker_id)
 			handle_rpc_func_cmd(ctx, arg_addr);
 
 			/* message id of RPC_REQUEST and RPC_RESUME should be match */
-			mitee_msg_pack(msg_id, MITEE_RPC_RESUME, arg_addr,
-				       &msg);
+			rc = mitee_msg_pack(msg_id, MITEE_RPC_RESUME, arg_addr,
+					    &msg);
+			if (rc)
+				goto deactive_worker;
 
 			args.in.cmd = OPTEE_FFA_YIELDING_CALL_WITH_ARG;
 			args.in.param[0] = OPTEE_FFA_MBZ;
@@ -603,6 +615,19 @@ static int32_t mitee_yielding_call(struct optee *optee, uint32_t worker_id)
 			if (!task) {
 				mutex_unlock(&task_list->lock);
 				pr_warn("task id invalid, maybe task aborted, id: %u\n", msg_id);
+				rc = -EINVAL;
+				goto deactive_worker;
+			}
+
+			if (arg_addr->num_params > MITEE_MSG_MAX_NUM_PARAMS ||
+			    arg_addr->num_params > task->legacy_msg->num_params) {
+				pr_err("invalid response num_params: %u (max %u)\n",
+				       arg_addr->num_params,
+				       task->legacy_msg->num_params);
+				task->legacy_msg->ret = TEEC_ERROR_COMMUNICATION;
+				task->status = MITEE_TASK_DONE;
+				complete(&task->c);
+				mutex_unlock(&task_list->lock);
 				rc = -EINVAL;
 				goto deactive_worker;
 			}
@@ -633,6 +658,17 @@ static int32_t mitee_yielding_call(struct optee *optee, uint32_t worker_id)
 deactive_worker:
 	/* set current worker idle */
 	atomic_set(&optee->workers[worker_id].active, 0);
+	if (orig_task_id > 0) {
+		mutex_lock(&task_list->lock);
+		task = idr_find(&task_list->idr, orig_task_id);
+		if (task && task->status != MITEE_TASK_DONE) {
+			if (task->legacy_msg)
+				task->legacy_msg->ret = TEEC_ERROR_COMMUNICATION;
+			task->status = MITEE_TASK_DONE;
+			complete(&task->c);
+		}
+		mutex_unlock(&task_list->lock);
+	}
 
 done:
 	return rc;
@@ -650,18 +686,23 @@ int32_t mitee_worker_fn(void *arg)
 
 	atomic_inc(&optee->workers_run);
 
-	while (true) {
+	while (!kthread_should_stop()) {
 		rc = wait_for_completion_interruptible(&optee->workers[id].c);
-		if (rc == -ERESTARTSYS)
+		if (rc == -ERESTARTSYS) {
+			if (kthread_should_stop())
+				break;
 			continue;
+		}
+		if (kthread_should_stop())
+			break;
 
 		rc = mitee_yielding_call(optee, id);
-		BUG_ON(rc);
-
+		if (rc)
+			pr_err("mitee worker[%u] call failed: %d\n", id, rc);
 	}
 
 	if (!atomic_dec_return(&optee->workers_run))
-		pr_err("all mitee workers has been killed\n");
+		pr_info("all mitee workers stopped\n");
 
-	return rc;
+	return 0;
 }

@@ -58,6 +58,7 @@ struct mitee_memlog_state {
 	 */
 	spinlock_t lock;
 	struct log_rb *log;
+	size_t log_size;
 	uint32_t get;
 	uint32_t b_get;
 

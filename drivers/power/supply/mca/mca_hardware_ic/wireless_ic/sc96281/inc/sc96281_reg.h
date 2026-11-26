@@ -775,7 +775,6 @@ struct sc96281 {
 	int hall_s_int_irq;
 	//pinctrl
 	struct pinctrl *sc96281_pinctrl;
-	struct pinctrl_state *pinctrl_stat;
 	//fw_bin
 	bool fw_program;
 	char *fw_upgrade_fail_info;

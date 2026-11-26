@@ -2941,17 +2941,16 @@ static int_map_t tx_irq_map[] = {
 	DECL_INTERRUPT_MAP(WP_IRQ_ERROR_CODE, RTX_INT_ERR_CODE),
 };
 
-static int sc96281_rx_get_int_flag(uint32_t rxint)
+static int sc96281_rx_get_int_mask(uint32_t rxint)
 {
-	int i = 0;
+	int i, mask = 0;
 
 	for (i = 0; i < ARRAY_SIZE(rx_irq_map); i++) {
-		if (rx_irq_map[i].irq_regval & rxint) {
-			return rx_irq_map[i].irq_flag;
-		}
+		if (rx_irq_map[i].irq_regval & rxint)
+			mask |= BIT(rx_irq_map[i].irq_flag);
 	}
 
-	return RX_INT_UNKNOWN;
+	return mask;
 }
 
 static int sc96281_tx_get_int_flag(uint32_t txint)
@@ -3060,8 +3059,8 @@ static void sc96281_interrupt_work(struct work_struct *work)
 			goto exit;
 		}
 		sc96281_rx_clr_int(chip, regval);
-		chip->proc_data.int_flag = sc96281_rx_get_int_flag(regval);
-		mca_log_info("get rx int 0x%x, flag %d \n", regval,
+		chip->proc_data.int_flag = sc96281_rx_get_int_mask(regval);
+		mca_log_info("get rx int 0x%x, mask 0x%x\n", regval,
 			     chip->proc_data.int_flag);
 		mca_strategy_func_process(STRATEGY_FUNC_TYPE_BASIC_WIRELESS,
 					  MCA_EVENT_WIRELESS_INT_CHANGE,
@@ -3351,18 +3350,6 @@ static int sc96281_parse_dt(struct sc96281 *chip)
 		return -1;
 	}
 
-	chip->pinctrl_stat =
-		pinctrl_lookup_state(chip->sc96281_pinctrl, "rx_int_pull_up");
-	if (IS_ERR_OR_NULL(chip->pinctrl_stat)) {
-		mca_log_err("failed to parse pinctrl_stat\n");
-		return -1;
-	}
-
-	ret = pinctrl_select_state(chip->sc96281_pinctrl, chip->pinctrl_stat);
-	if (ret) {
-		mca_log_err("failed to select pinctrl_stat\n");
-		return -1;
-	}
 
 	chip->enable_gpio = of_get_named_gpio(node, "sleep-rx-gpio", 0);
 	if ((!gpio_is_valid(chip->enable_gpio))) {

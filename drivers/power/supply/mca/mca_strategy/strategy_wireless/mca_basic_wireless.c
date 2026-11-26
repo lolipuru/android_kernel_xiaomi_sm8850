@@ -2959,7 +2959,7 @@ strategy_wireless_split_irq_index(struct strategy_wireless_dev *info,
 			     irq_node->int_mask);
 
 		spin_lock(&info->list_lock);
-		list_add(&irq_node->node, &info->header);
+		list_add_tail(&irq_node->node, &info->header);
 		info->irq_node_cnt++;
 		spin_unlock(&info->list_lock);
 	}

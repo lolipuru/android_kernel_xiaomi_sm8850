@@ -2856,7 +2856,7 @@ static void nuvolta_1652_interrupt_work(struct work_struct *work)
 			nuvolta_1652_config_rx_int_flag(int_val);
 		mca_strategy_func_process(STRATEGY_FUNC_TYPE_BASIC_WIRELESS,
 					  MCA_EVENT_WIRELESS_INT_CHANGE,
-					  chip->proc_data.int_flag);
+					  BIT(chip->proc_data.int_flag));
 	}
 	chip->proc_data.int_flag = 0;
 

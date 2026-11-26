@@ -166,6 +166,10 @@ source "$(KCONFIG_EXT_PREFIX)drivers/thermal/xiaomi/Kconfig"
 
 source "$(KCONFIG_EXT_PREFIX)drivers/input/misc/cs40l26_haptic/Kconfig"
 
+source "$(KCONFIG_EXT_PREFIX)sound/soc/codecs/Kconfig"
+
+source "$(KCONFIG_EXT_PREFIX)drivers/firmware/cirrus/Kconfig"
+
 source "$(KCONFIG_EXT_PREFIX)drivers/gpio/Kconfig"
 
 endmenu
